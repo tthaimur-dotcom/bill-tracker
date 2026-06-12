@@ -263,6 +263,7 @@ function render() {
         case 'discrepancies': html = renderDiscrepancies(); break;
         case 'analytics': html = renderAnalytics(); break;
         case 'supplier-statement': html = renderSupplierStatement(); break;
+        case 'calendar': html = renderCalendar(); break;
     }
 
     html += renderBottomNav();
@@ -555,7 +556,7 @@ function renderAddBill() {
         <div class="form-group">
             <label>Supplier *</label>
             <select class="form-select" id="bill-supplier">
-                <option value="">-- Select Supplier --</option>
+                <option value="">-- Select --</option>
                 ${appData.suppliers.map(s => `<option value="${s.id}" ${billState.supplierId === s.id ? 'selected' : ''}>${s.name}</option>`).join('')}
             </select>
         </div>
@@ -566,25 +567,20 @@ function renderAddBill() {
                 <input class="form-input" type="date" id="bill-date" value="${billState.date}" />
             </div>
             <div>
-                <label>Bill No.</label>
-                <input class="form-input" id="bill-number" value="${billState.billNumber}" placeholder="Optional" />
+                <label>Dealer Total</label>
+                <input class="form-input form-input-lg" type="number" id="written-total" value="${billState.writtenTotal}" placeholder="₹" inputmode="numeric" step="1" />
             </div>
         </div>
 
         <!-- Live Tracker -->
         ${trackerHtml}
 
-        <!-- Written Total -->
-        <div class="form-group">
-            <label>Dealer's Written Total</label>
-            <input class="form-input" type="number" id="written-total" value="${billState.writtenTotal}" placeholder="₹ total on the slip" step="0.01" />
-        </div>
-
-        <!-- Photo Section -->
+        <!-- Photo -->
         <div class="photo-section">
             <div class="photo-btns">
-                <button class="btn btn-outline btn-sm" data-action="take-photo">📷 Camera</button>
-                <button class="btn btn-outline btn-sm" data-action="upload-photo">📁 Gallery</button>
+                <button class="btn btn-outline btn-sm" data-action="take-photo">📷</button>
+                <button class="btn btn-outline btn-sm" data-action="upload-photo">�</button>
+                ${billState.photo ? `<button class="btn btn-ghost btn-sm" data-action="clear-photo">✕ Remove</button>` : ''}
             </div>
             ${billState.photo ? `<img class="photo-preview-img" src="${billState.photo}" alt="Bill" />` : ''}
             <input type="file" id="file-camera" accept="image/*" capture="environment" class="hidden" />
@@ -593,58 +589,47 @@ function renderAddBill() {
 
         <!-- Suggestions -->
         ${suggestions.length > 0 ? `
-            <div class="section-title">Quick Add</div>
             <div class="suggestions-bar">
-                ${suggestions.map(s => `<button class="suggestion-chip" data-action="add-suggestion" data-name="${s.name}" data-rate="${s.rate}" data-unit="${s.unit || 'pcs'}">${s.name} (₹${s.rate})</button>`).join('')}
+                ${suggestions.slice(0, 8).map(s => `<button class="suggestion-chip" data-action="add-suggestion" data-name="${s.name}" data-rate="${s.rate}" data-unit="${s.unit || 'pcs'}">${s.name}</button>`).join('')}
             </div>
         ` : ''}
 
-        <!-- Fast Items Entry -->
-        <div class="section-title">Items — qty & rate or just total ↓</div>
-        <div class="fast-entry-table" id="fast-entry">
-            <div class="fast-entry-header">
-                <span class="fe-name">Item (optional)</span>
-                <span class="fe-qty">Qty</span>
-                <span class="fe-rate">Rate</span>
-                <span class="fe-total">Total</span>
+        <!-- FAST ITEM ENTRY -->
+        <div class="fast-items-section">
+            <div class="fast-items-head">
+                <span class="fi-sl">#</span>
+                <span class="fi-item">Item</span>
+                <span class="fi-qty">Qty</span>
+                <span class="fi-rate">Rate</span>
+                <span class="fi-amt">Amt</span>
             </div>
             ${billState.items.map((item, idx) => {
-                const lastRate = getLastRate(billState.supplierId, item.name);
-                const currentRate = parseFloat(item.rate) || 0;
-                const rateChanged = lastRate !== null && currentRate > 0 && currentRate !== lastRate;
                 const itemTotal = calcItemTotal(item);
+                const hasQtyRate = parseFloat(item.qty) && parseFloat(item.rate);
                 return `
-                <div class="fast-entry-row" data-idx="${idx}">
-                    <input class="fe-input fe-name item-input" placeholder="—" value="${item.name}" data-field="name" data-idx="${idx}" autocomplete="off" />
-                    <input class="fe-input fe-qty item-input" placeholder="0" type="number" inputmode="decimal" value="${item.qty}" data-field="qty" data-idx="${idx}" step="any" />
-                    <input class="fe-input fe-rate item-input ${rateChanged ? 'rate-changed' : ''}" placeholder="—" type="number" inputmode="decimal" value="${item.rate}" data-field="rate" data-idx="${idx}" step="0.01" />
-                    <input class="fe-input fe-total-input item-input" placeholder="${itemTotal > 0 ? itemTotal.toFixed(0) : '₹'}" type="number" inputmode="decimal" value="${item.total || ''}" data-field="total" data-idx="${idx}" step="0.01" ${(parseFloat(item.qty) && parseFloat(item.rate)) ? 'disabled' : ''} />
-                    ${billState.items.length > 1 ? `<button class="fe-remove" data-action="remove-item" data-idx="${idx}">×</button>` : ''}
-                </div>
-                ${rateChanged ? `<div class="fe-rate-alert">↑ Was ₹${lastRate} (${((currentRate - lastRate) / lastRate * 100).toFixed(0)}%)</div>` : ''}`;
+                <div class="fast-items-row" data-idx="${idx}">
+                    <span class="fi-sl">${idx + 1}</span>
+                    <input class="fi-input fi-item item-input" placeholder="Item ${idx + 1}" value="${item.name}" data-field="name" data-idx="${idx}" />
+                    <input class="fi-input fi-qty item-input" placeholder="—" type="number" inputmode="numeric" value="${item.qty}" data-field="qty" data-idx="${idx}" />
+                    <input class="fi-input fi-rate item-input" placeholder="—" type="number" inputmode="numeric" value="${item.rate}" data-field="rate" data-idx="${idx}" />
+                    <input class="fi-input fi-amt item-input" placeholder="${hasQtyRate ? itemTotal.toFixed(0) : '—'}" type="number" inputmode="numeric" value="${item.total || (hasQtyRate ? '' : '')}" data-field="total" data-idx="${idx}" ${hasQtyRate ? 'disabled' : ''} />
+                </div>`;
             }).join('')}
-        </div>
-        <div class="px-16 mb-16" style="display:flex; gap:8px;">
-            <button class="btn btn-ghost btn-sm" data-action="add-item" style="flex:1">+ Add Row</button>
-            <button class="btn btn-ghost btn-sm" data-action="add-5-items" style="flex:1">+5 Rows</button>
+            <div class="fast-items-footer">
+                <button class="fi-add-btn" data-action="add-item">+</button>
+                <button class="fi-add-btn" data-action="add-5-items">+5</button>
+                <span class="fi-total-label">TOTAL</span>
+                <span class="fi-total-val" id="calc-total-display">₹${calcTotal > 0 ? calcTotal.toLocaleString('en-IN') : '0'}</span>
+            </div>
         </div>
 
-        <!-- Totals -->
-        <div class="totals-section">
-            <div class="total-row">
-                <span class="label">Calculated Total</span>
-                <span class="value success" id="calc-total-display">${fmt(calcTotal)}</span>
-            </div>
-            ${writtenTotal > 0 ? `
-            <div class="total-row">
-                <span class="label">Written Total</span>
-                <span class="value">${fmt(writtenTotal)}</span>
-            </div>
-            ` : ''}
+        <div class="form-group" style="margin-top:8px;">
+            <label>Bill No. (optional)</label>
+            <input class="form-input" id="bill-number" value="${billState.billNumber}" placeholder="Ref" />
         </div>
 
         <div class="btn-row mt-16" style="margin-bottom:20px;">
-            <button class="btn btn-primary" data-action="save-bill">💾 ${billState.editingBillId ? 'Update Bill' : 'Save Bill'}</button>
+            <button class="btn btn-primary" data-action="save-bill">💾 ${billState.editingBillId ? 'Update' : 'Save Bill'}</button>
         </div>
     `;
 }
@@ -725,11 +710,13 @@ function renderBillDetail() {
         </div>
 
         <div class="btn-row mt-16">
-            <button class="btn btn-primary btn-sm" data-action="share-card-image" data-id="${bill.id}">📸 Share as Image</button>
+            <button class="btn btn-primary btn-sm" data-action="share-card-image" data-id="${bill.id}">📸 Share Image</button>
+            <button class="btn btn-outline btn-sm" data-action="edit-bill" data-id="${bill.id}">✏️ Edit Bill</button>
         </div>
         <div class="btn-row">
-            <button class="btn btn-outline btn-sm" data-action="share-bill-whatsapp" data-id="${bill.id}">💬 WhatsApp Text</button>
+            <button class="btn btn-outline btn-sm" data-action="share-bill-whatsapp" data-id="${bill.id}">💬 WhatsApp</button>
             <button class="btn btn-outline btn-sm" data-action="share-bill-text" data-id="${bill.id}">📋 Copy</button>
+            <button class="btn btn-danger btn-sm" data-action="delete-bill" data-id="${bill.id}">🗑️</button>
         </div>
     `;
 }
@@ -782,8 +769,8 @@ function renderHistoryList(bills) {
         html += `<div class="section-title">${month} · ${fmt(monthTotal)}</div>`;
         monthBills.forEach(bill => {
             const sup = appData.suppliers.find(s => s.id === bill.supplierId);
-            html += `<div class="card" data-action="view-bill" data-id="${bill.id}">
-                <div class="bill-card">
+            html += `<div class="card bill-card-wrap">
+                <div class="bill-card" data-action="view-bill" data-id="${bill.id}">
                     <div class="bill-icon ${bill.hasMismatch ? 'mismatch' : ''}">
                         ${bill.hasMismatch ? '⚠️' : '📄'}
                     </div>
@@ -793,6 +780,7 @@ function renderHistoryList(bills) {
                     </div>
                     <div class="bill-amount">${fmt(bill.calculatedTotal)}</div>
                 </div>
+                <button class="bill-edit-btn" data-action="edit-bill" data-id="${bill.id}">✏️</button>
             </div>`;
         });
     }
@@ -990,6 +978,13 @@ function renderSettings() {
 
         <div class="section-title">App</div>
 
+        <div class="card" data-action="go-calendar" style="cursor:pointer;">
+            <div class="supplier-item">
+                <div class="supplier-avatar">📅</div>
+                <div class="supplier-details"><h3>Spending Calendar</h3><p>Heatmap of daily spending</p></div>
+            </div>
+        </div>
+
         <div class="card" data-action="go-history" style="cursor:pointer;">
             <div class="supplier-item">
                 <div class="supplier-avatar">📋</div>
@@ -1004,10 +999,33 @@ function renderSettings() {
             </div>
         </div>
 
+        <div class="card" data-action="export-pdf-ledger" style="cursor:pointer;">
+            <div class="supplier-item">
+                <div class="supplier-avatar">📄</div>
+                <div class="supplier-details"><h3>Export PDF Ledger</h3><p>Full month ledger as PDF</p></div>
+            </div>
+        </div>
+
         <div class="card" data-action="toggle-theme" style="cursor:pointer;">
             <div class="supplier-item">
                 <div class="supplier-avatar">🌙</div>
                 <div class="supplier-details"><h3>Dark Mode</h3><p>Toggle theme</p></div>
+            </div>
+        </div>
+
+        <div class="section-title">Sync & Backup</div>
+
+        <div class="card" data-action="qr-sync" style="cursor:pointer;">
+            <div class="supplier-item">
+                <div class="supplier-avatar">📲</div>
+                <div class="supplier-details"><h3>QR Sync (Offline)</h3><p>Transfer data via QR code</p></div>
+            </div>
+        </div>
+
+        <div class="card" data-action="email-backup" style="cursor:pointer;">
+            <div class="supplier-item">
+                <div class="supplier-avatar">📧</div>
+                <div class="supplier-details"><h3>Email Backup</h3><p>Send backup to your email</p></div>
             </div>
         </div>
 
@@ -1068,44 +1086,49 @@ function attachEventListeners() {
             const field = e.target.dataset.field;
             billState.items[idx][field] = e.target.value;
 
-            // If qty+rate entered, auto-fill total and disable it
-            const row = e.target.closest('.fast-entry-row');
+            // If qty+rate entered, auto-calculate and disable amt field
+            const row = e.target.closest('.fast-items-row');
             if (row) {
                 const qty = parseFloat(billState.items[idx].qty) || 0;
                 const rate = parseFloat(billState.items[idx].rate) || 0;
-                const totalInput = row.querySelector('.fe-total-input');
-                if (qty && rate && totalInput) {
-                    totalInput.placeholder = (qty * rate).toFixed(0);
-                    totalInput.disabled = true;
+                const amtInput = row.querySelector('.fi-amt');
+                if (qty && rate && amtInput) {
+                    amtInput.placeholder = (qty * rate).toFixed(0);
+                    amtInput.disabled = true;
                     billState.items[idx].total = '';
-                } else if (totalInput) {
-                    totalInput.disabled = false;
-                    totalInput.placeholder = '₹';
+                } else if (amtInput) {
+                    amtInput.disabled = false;
+                    amtInput.placeholder = '—';
                 }
             }
+
+            // Update total display
+            const calcTotal = billState.items.reduce((s, i) => s + calcItemTotal(i), 0);
+            const totalEl = document.getElementById('calc-total-display');
+            if (totalEl) totalEl.textContent = '₹' + (calcTotal > 0 ? calcTotal.toLocaleString('en-IN') : '0');
+
             updateLiveTracker();
         });
 
-        // Auto-advance: Enter key flow
+        // Enter key: fast navigation
         inp.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
                 e.preventDefault();
                 const idx = parseInt(e.target.dataset.idx);
                 const field = e.target.dataset.field;
-                const row = e.target.closest('.fast-entry-row');
+                const row = e.target.closest('.fast-items-row');
 
                 if (field === 'name') {
-                    if (row) row.querySelector('.fe-qty')?.focus();
+                    if (row) row.querySelector('.fi-qty')?.focus();
                 } else if (field === 'qty') {
-                    if (row) row.querySelector('.fe-rate')?.focus();
+                    if (row) row.querySelector('.fi-rate')?.focus();
                 } else if (field === 'rate') {
-                    // If rate filled, go to next row. If empty, go to total field
                     const rate = parseFloat(e.target.value);
                     if (rate) {
                         goNextRow(idx);
                     } else {
-                        const totalInput = row?.querySelector('.fe-total-input');
-                        if (totalInput && !totalInput.disabled) totalInput.focus();
+                        const amtInput = row?.querySelector('.fi-amt');
+                        if (amtInput && !amtInput.disabled) amtInput.focus();
                         else goNextRow(idx);
                     }
                 } else if (field === 'total') {
@@ -1118,15 +1141,15 @@ function attachEventListeners() {
     function goNextRow(currentIdx) {
         const nextIdx = currentIdx + 1;
         if (nextIdx < billState.items.length) {
-            const nextRow = document.querySelector(`.fast-entry-row[data-idx="${nextIdx}"] .fe-qty`);
-            if (nextRow) nextRow.focus();
+            const nextQty = document.querySelector(`.fast-items-row[data-idx="${nextIdx}"] .fi-qty`);
+            if (nextQty) nextQty.focus();
         } else {
             billState.items.push({ name: '', qty: '', unit: 'pcs', rate: '', total: '' });
             navigate('add-bill');
             setTimeout(() => {
-                const rows = document.querySelectorAll('.fast-entry-row');
+                const rows = document.querySelectorAll('.fast-items-row');
                 const last = rows[rows.length - 1];
-                if (last) last.querySelector('.fe-qty')?.focus();
+                if (last) last.querySelector('.fi-qty')?.focus();
             }, 100);
         }
     }
@@ -1301,6 +1324,7 @@ function handleAction(action, dataset) {
 
         case 'take-photo': document.getElementById('file-camera').click(); break;
         case 'upload-photo': document.getElementById('file-upload').click(); break;
+        case 'clear-photo': billState.photo = null; navigate('add-bill'); break;
         case 'add-payment': showPaymentModal(dataset.id); break;
 
         case 'share-bill-text': shareBillAsText(dataset.id); break;
@@ -1318,6 +1342,11 @@ function handleAction(action, dataset) {
         case 'import-data': document.getElementById('import-file').click(); break;
         case 'export-csv': exportCSV(); break;
         case 'monthly-summary': showMonthlySummary(); break;
+        case 'go-calendar': navigate('calendar'); break;
+        case 'voice-entry': startVoiceEntry(); break;
+        case 'export-pdf-ledger': exportPDFLedger(); break;
+        case 'email-backup': emailBackup(); break;
+        case 'qr-sync': showQRSync(); break;
 
         case 'save-sync-url': {
             const url = document.getElementById('sync-url-input')?.value.trim();
@@ -1343,6 +1372,14 @@ function handleAction(action, dataset) {
             });
             break;
         }
+
+        case 'cal-prev':
+        case 'cal-next':
+        case 'cal-day':
+            handleCalendarAction(action, dataset); break;
+
+        case 'zoom-photo':
+            if (billState.photo) showPhotoZoom(billState.photo); break;
     }
 }
 
@@ -1688,216 +1725,161 @@ function buildStatementText(supplierId) {
     return t;
 }
 
-// ===== SHARE AS IMAGE (canvas) =====
+// ===== SHARE AS IMAGE (receipt style) =====
 function shareCardAsImage(billId) {
     const bill = appData.bills.find(b => b.id === billId);
     if (!bill) return;
     const sup = appData.suppliers.find(s => s.id === bill.supplierId);
-
-    const scale = 2; // 2x resolution for crisp image
-    const W = 700 * scale;
-    const padding = 50 * scale;
-    const lineH = 36 * scale;
-
-    // Calculate height
-    let totalH = padding;
-    if (bill.photo) totalH += 350 * scale;
-    totalH += 80 * scale; // header
-    totalH += 20 * scale; // divider gap
-    totalH += bill.items.length * lineH + 30 * scale; // items + gap
-    totalH += 60 * scale; // total line
-    if (bill.hasMismatch) totalH += 120 * scale;
-    else totalH += 40 * scale;
-    totalH += padding;
-
+    const S = 3;
+    const W = 560 * S;
+    const pad = 36 * S;
+    const LH = 22 * S;
+    const dash = '-'.repeat(50);
     const canvas = document.createElement('canvas');
+    const maxH = (20 + bill.items.length + (bill.hasMismatch ? 5 : 0) + (bill.photo ? 16 : 0)) * LH + pad * 2;
     canvas.width = W;
-    canvas.height = totalH;
+    canvas.height = maxH;
     const ctx = canvas.getContext('2d');
-
-    // Crisp rendering
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, W, maxH);
+    let y = pad;
 
-    // White background
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, W, totalH);
-
-    let y = padding;
+    function txt(t, x, bold) { ctx.font = (bold ? 'bold ' : '') + (14 * S) + 'px "Courier New",monospace'; ctx.fillStyle = '#111'; ctx.fillText(t, x !== undefined ? x : pad, y); y += LH; }
+    function txtR(l, r, bold) { ctx.font = (bold ? 'bold ' : '') + (14 * S) + 'px "Courier New",monospace'; ctx.fillStyle = '#111'; ctx.fillText(l, pad, y); var w = ctx.measureText(r).width; ctx.fillText(r, W - pad - w, y); y += LH; }
 
     if (bill.photo) {
-        const img = new Image();
-        img.onload = () => {
-            // Draw photo with rounded corners and shadow effect
-            const photoH = 320 * scale;
-            const photoW = W - padding * 2;
-            const ratio = Math.min(photoW / img.width, photoH / img.height);
-            const drawW = img.width * ratio;
-            const drawH = img.height * ratio;
-            const px = (W - drawW) / 2;
-
-            // Light border around photo
-            ctx.strokeStyle = '#e5e7eb';
-            ctx.lineWidth = 1 * scale;
-            ctx.strokeRect(px - 1, y - 1, drawW + 2, drawH + 2);
-            ctx.drawImage(img, px, y, drawW, drawH);
-
-            y += drawH + 30 * scale;
-            finishDrawing(ctx, canvas, W, padding, lineH, y, bill, sup, scale);
+        var img = new Image();
+        img.onload = function() {
+            var ratio = Math.min((W - pad * 2) / img.width, (14 * LH) / img.height);
+            var dw = img.width * ratio, dh = img.height * ratio;
+            ctx.drawImage(img, (W - dw) / 2, y, dw, dh);
+            y += dh + LH;
+            drawReceipt(ctx, canvas, W, pad, LH, y, bill, sup, S, dash, txt, txtR);
         };
         img.src = bill.photo;
     } else {
-        finishDrawing(ctx, canvas, W, padding, lineH, y, bill, sup, scale);
+        drawReceipt(ctx, canvas, W, pad, LH, y, bill, sup, S, dash, txt, txtR);
     }
 }
 
-function finishDrawing(ctx, canvas, W, padding, lineH, y, bill, sup, scale) {
-    const contentW = W - padding * 2;
+function drawReceipt(ctx, canvas, W, pad, LH, y, bill, sup, S, dash, txt, txtR) {
+    var supName = sup ? sup.name.toUpperCase() : 'UNKNOWN';
+    var now = new Date();
+    var time = now.toLocaleTimeString('en-IN', {hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true}).toUpperCase();
 
-    // === HEADER ===
-    ctx.fillStyle = '#111827';
-    ctx.font = `bold ${24 * scale}px -apple-system, BlinkMacSystemFont, sans-serif`;
-    ctx.fillText(sup ? sup.name.toUpperCase() : 'UNKNOWN', padding, y);
-    y += 30 * scale;
+    // Title centered
+    ctx.font = 'bold ' + (16 * S) + 'px "Courier New",monospace';
+    ctx.fillStyle = '#111';
+    var tw = ctx.measureText('BILL').width;
+    ctx.fillText('BILL', (W - tw) / 2, y); y += LH * 1.4;
 
-    ctx.fillStyle = '#6b7280';
-    ctx.font = `${14 * scale}px -apple-system, BlinkMacSystemFont, sans-serif`;
-    let subText = fmtDate(bill.date);
-    if (bill.billNumber) subText += `  ·  Bill #${bill.billNumber}`;
-    ctx.fillText(subText, padding, y);
-    y += 36 * scale;
+    // Header
+    txtR('Bill No  : ' + (bill.billNumber || '-'), 'Date: ' + fmtDate(bill.date));
+    txtR('Customer : ' + supName, 'Time: ' + time);
+    txt(dash);
 
-    // === THIN DIVIDER ===
-    ctx.strokeStyle = '#e5e7eb';
-    ctx.lineWidth = 1 * scale;
-    ctx.beginPath();
-    ctx.moveTo(padding, y);
-    ctx.lineTo(W - padding, y);
-    ctx.stroke();
-    y += 24 * scale;
+    // Column heads
+    ctx.font = 'bold ' + (14 * S) + 'px "Courier New",monospace';
+    ctx.fillStyle = '#111';
+    ctx.fillText('Sl  Item Name', pad, y);
+    var qX = W - pad - 180 * S;
+    var aX = W - pad;
+    ctx.fillText('Qty', qX, y);
+    var aw = ctx.measureText('Amount').width;
+    ctx.fillText('Amount', aX - aw, y);
+    y += LH;
+    txt(dash);
 
-    // === ITEMS (clean, no grid, just aligned text) ===
-    bill.items.forEach((item, i) => {
-        const name = item.name || `Item ${i + 1}`;
-
-        // Item name — left
-        ctx.fillStyle = '#111827';
-        ctx.font = `500 ${15 * scale}px -apple-system, BlinkMacSystemFont, sans-serif`;
-        ctx.fillText(name, padding, y);
-
-        // Qty × Rate — middle
-        let detail = '';
-        if (item.qty && item.rate) detail = `${item.qty} × ₹${item.rate}`;
-        else if (item.qty) detail = `Qty: ${item.qty}`;
-        ctx.fillStyle = '#9ca3af';
-        ctx.font = `${13 * scale}px -apple-system, BlinkMacSystemFont, sans-serif`;
-        const detailX = padding + contentW * 0.5;
-        ctx.fillText(detail, detailX, y);
-
-        // Total — right aligned
-        ctx.fillStyle = '#111827';
-        ctx.font = `600 ${15 * scale}px -apple-system, BlinkMacSystemFont, sans-serif`;
-        const totalText = '₹' + item.calculatedTotal.toFixed(0);
-        const totalWidth = ctx.measureText(totalText).width;
-        ctx.fillText(totalText, W - padding - totalWidth, y);
-
-        y += lineH;
-
-        // Light row separator (except last)
-        if (i < bill.items.length - 1) {
-            ctx.strokeStyle = '#f3f4f6';
-            ctx.lineWidth = 0.5 * scale;
-            ctx.beginPath();
-            ctx.moveTo(padding, y - lineH * 0.35);
-            ctx.lineTo(W - padding, y - lineH * 0.35);
-            ctx.stroke();
-        }
+    // Items
+    bill.items.forEach(function(item, i) {
+        ctx.font = (14 * S) + 'px "Courier New",monospace';
+        ctx.fillStyle = '#111';
+        var sl = String(i + 1);
+        var name = (item.name || 'Item ' + (i + 1)).toUpperCase();
+        if (name.length > 26) name = name.substring(0, 25) + '..';
+        ctx.fillText(sl + '   ' + name, pad, y);
+        var qStr = String(item.qty || '');
+        var aStr = String(Math.round(item.calculatedTotal));
+        var qw2 = ctx.measureText(qStr).width;
+        ctx.fillText(qStr, qX + 30 * S - qw2, y);
+        ctx.font = 'bold ' + (14 * S) + 'px "Courier New",monospace';
+        var aw2 = ctx.measureText(aStr).width;
+        ctx.fillText(aStr, aX - aw2, y);
+        y += LH;
     });
 
-    y += 16 * scale;
+    txt(dash);
 
-    // === TOTAL DIVIDER (slightly thicker) ===
-    ctx.strokeStyle = '#d1d5db';
-    ctx.lineWidth = 1.5 * scale;
-    ctx.beginPath();
-    ctx.moveTo(padding, y);
-    ctx.lineTo(W - padding, y);
-    ctx.stroke();
-    y += 30 * scale;
+    // NET TOTAL
+    ctx.font = 'bold ' + (15 * S) + 'px "Courier New",monospace';
+    ctx.fillStyle = '#111';
+    var total = String(Math.round(bill.calculatedTotal));
+    var label = 'NET TOTAL :';
+    var lw = ctx.measureText(label).width;
+    var tvw = ctx.measureText(total).width;
+    ctx.fillText(label, aX - tvw - lw - 12 * S, y);
+    ctx.fillText(total, aX - tvw, y);
+    y += LH;
+    txt(dash);
 
-    // === TOTAL ===
-    ctx.fillStyle = '#059669';
-    ctx.font = `bold ${20 * scale}px -apple-system, BlinkMacSystemFont, sans-serif`;
-    ctx.fillText('TOTAL', padding, y);
-    const totalVal = '₹' + bill.calculatedTotal.toFixed(2);
-    const totalValW = ctx.measureText(totalVal).width;
-    ctx.fillText(totalVal, W - padding - totalValW, y);
-    y += 40 * scale;
+    // Words
+    ctx.font = 'bold ' + (12 * S) + 'px "Courier New",monospace';
+    ctx.fillStyle = '#111';
+    ctx.fillText('Amount: Rupees ' + numberToWords(Math.round(bill.calculatedTotal)) + ' Only', pad, y);
+    y += LH;
 
-    // === MISMATCH SECTION ===
+    // Mismatch
     if (bill.hasMismatch) {
-        const diff = bill.calculatedTotal - bill.writtenTotal;
-
-        // Red alert box background
-        const boxY = y - 8 * scale;
-        const boxH = 90 * scale;
-        ctx.fillStyle = '#fef2f2';
-        roundRect(ctx, padding - 10 * scale, boxY, contentW + 20 * scale, boxH, 8 * scale);
-        ctx.fill();
-
-        // Alert text
-        ctx.fillStyle = '#dc2626';
-        ctx.font = `bold ${16 * scale}px -apple-system, BlinkMacSystemFont, sans-serif`;
-        ctx.fillText(`⚠ ${diff > 0 ? 'EXCEEDED' : 'SHORT'} BY ₹${Math.abs(diff).toFixed(2)}`, padding + 6 * scale, y + 10 * scale);
-        y += 36 * scale;
-
-        ctx.fillStyle = '#6b7280';
-        ctx.font = `${13 * scale}px -apple-system, BlinkMacSystemFont, sans-serif`;
-        ctx.fillText(`Dealer's total: ₹${bill.writtenTotal.toFixed(2)}   |   Calculated: ₹${bill.calculatedTotal.toFixed(2)}`, padding + 6 * scale, y + 10 * scale);
-        y += 28 * scale;
-
-        ctx.fillStyle = '#374151';
-        ctx.font = `italic ${12 * scale}px -apple-system, BlinkMacSystemFont, sans-serif`;
-        ctx.fillText('Please verify and confirm the correct amount.', padding + 6 * scale, y + 10 * scale);
+        txt(dash);
+        ctx.font = 'bold ' + (14 * S) + 'px "Courier New",monospace';
+        ctx.fillStyle = '#cc0000';
+        var diff = bill.calculatedTotal - bill.writtenTotal;
+        ctx.fillText('MISMATCH: ' + (diff > 0 ? 'EXCESS' : 'SHORT') + ' Rs.' + Math.abs(Math.round(diff)), pad, y); y += LH;
+        ctx.fillStyle = '#333';
+        ctx.font = (12 * S) + 'px "Courier New",monospace';
+        ctx.fillText('Dealer: Rs.' + Math.round(bill.writtenTotal) + '  |  Calc: Rs.' + Math.round(bill.calculatedTotal), pad, y); y += LH;
+        ctx.fillText('Please verify the correct amount.', pad, y); y += LH;
     }
 
-    // === EXPORT ===
-    canvas.toBlob((blob) => {
+    txt(dash);
+    txtR('For Reference Only', 'Page:1');
+
+    // Crop and export
+    var fH = y + pad;
+    var fc = document.createElement('canvas');
+    fc.width = canvas.width; fc.height = fH;
+    var fctx = fc.getContext('2d');
+    fctx.fillStyle = '#fff'; fctx.fillRect(0, 0, fc.width, fH);
+    fctx.drawImage(canvas, 0, 0);
+    fc.toBlob(function(blob) {
         if (navigator.share && navigator.canShare) {
             try {
-                const file = new File([blob], `bill-${sup ? sup.name : 'supplier'}-${bill.date}.png`, { type: 'image/png' });
-                if (navigator.canShare({ files: [file] })) {
-                    navigator.share({ files: [file], title: 'Bill Verification' }).catch(() => downloadBlob(blob, sup, bill));
-                    return;
-                }
-            } catch (e) {}
+                var file = new File([blob], 'bill-' + (sup ? sup.name : 'x') + '-' + bill.date + '.png', {type:'image/png'});
+                if (navigator.canShare({files:[file]})) { navigator.share({files:[file],title:'Bill'}).catch(function(){}); return; }
+            } catch(e){}
         }
-        downloadBlob(blob, sup, bill);
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url; a.download = 'bill-' + (sup ? sup.name : 'x') + '-' + bill.date + '.png';
+        a.click(); URL.revokeObjectURL(url);
+        toast('Image saved!');
     }, 'image/png', 1.0);
 }
 
-function downloadBlob(blob, sup, bill) {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `bill-${sup ? sup.name : 'supplier'}-${bill.date}.png`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast('Image saved!');
-}
-
-function roundRect(ctx, x, y, w, h, r) {
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.lineTo(x + w - r, y);
-    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-    ctx.lineTo(x + w, y + h - r);
-    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-    ctx.lineTo(x + r, y + h);
-    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-    ctx.lineTo(x, y + r);
-    ctx.quadraticCurveTo(x, y, x + r, y);
-    ctx.closePath();
+function numberToWords(n) {
+    if (n === 0) return 'Zero';
+    var ones = ['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];
+    var tens = ['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];
+    function tw(num) { if (num < 20) return ones[num]; return tens[Math.floor(num/10)] + (num%10 ? ' ' + ones[num%10] : ''); }
+    var w = '';
+    if (n >= 10000000) { w += tw(Math.floor(n/10000000)) + ' Crore '; n %= 10000000; }
+    if (n >= 100000) { w += tw(Math.floor(n/100000)) + ' Lakh '; n %= 100000; }
+    if (n >= 1000) { w += tw(Math.floor(n/1000)) + ' Thousand '; n %= 1000; }
+    if (n >= 100) { w += ones[Math.floor(n/100)] + ' Hundred '; n %= 100; }
+    if (n > 0) w += tw(n);
+    return w.trim();
 }
 
 function copyText(text) {
@@ -2037,6 +2019,388 @@ function showMonthlySummary() {
     document.body.appendChild(overlay);
     overlay.querySelector('#close-summary').addEventListener('click', () => overlay.remove());
     overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+}
+
+// ===== VOICE ENTRY (Speech Recognition) =====
+function startVoiceEntry() {
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+        toast('Voice not supported on this browser');
+        return;
+    }
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'en-IN';
+    recognition.continuous = false;
+    recognition.interimResults = false;
+
+    toast('🎤 Listening... say items');
+
+    recognition.onresult = function(event) {
+        const text = event.results[0][0].transcript;
+        parseVoiceInput(text);
+    };
+
+    recognition.onerror = function() {
+        toast('Could not hear. Try again.');
+    };
+
+    recognition.start();
+}
+
+function parseVoiceInput(text) {
+    // Try to parse: "item qty rate, item qty rate"
+    // Example: "LED backlight 10 380, remote 5 120"
+    const parts = text.split(/[,;and]+/i);
+    parts.forEach(function(part) {
+        part = part.trim();
+        if (!part) return;
+        // Try to find numbers at the end
+        var words = part.split(/\s+/);
+        var nums = [];
+        var nameParts = [];
+        words.forEach(function(w) {
+            var n = parseFloat(w.replace(/[^\d.]/g, ''));
+            if (!isNaN(n) && w.match(/\d/)) nums.push(n);
+            else nameParts.push(w);
+        });
+        var item = { name: nameParts.join(' ') || '', qty: '', unit: 'pcs', rate: '', total: '' };
+        if (nums.length >= 2) { item.qty = String(nums[0]); item.rate = String(nums[1]); }
+        else if (nums.length === 1) { item.qty = String(nums[0]); }
+        if (item.name || item.qty) billState.items.push(item);
+    });
+    // Remove empty first row if exists
+    if (billState.items.length > 1 && !billState.items[0].name && !billState.items[0].qty) {
+        billState.items.shift();
+    }
+    toast('Added ' + parts.length + ' item(s) by voice');
+    navigate('add-bill');
+}
+
+// ===== PHOTO ZOOM + ANNOTATE =====
+function showPhotoZoom(photoSrc) {
+    var overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.style.background = 'rgba(0,0,0,0.9)';
+    overlay.style.flexDirection = 'column';
+    overlay.style.alignItems = 'center';
+    overlay.style.justifyContent = 'center';
+    overlay.innerHTML = '<div class="zoom-container">' +
+        '<img src="' + photoSrc + '" class="zoom-img" id="zoom-img" />' +
+        '<div class="zoom-tools">' +
+        '<button class="btn btn-sm btn-outline" id="zoom-circle" style="color:#fff;border-color:#fff">&#x1F534; Circle</button>' +
+        '<button class="btn btn-sm btn-outline" id="zoom-close" style="color:#fff;border-color:#fff">Close</button>' +
+        '</div></div>';
+    document.body.appendChild(overlay);
+
+    var annotating = false;
+    overlay.querySelector('#zoom-close').addEventListener('click', function() { overlay.remove(); });
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+
+    overlay.querySelector('#zoom-circle').addEventListener('click', function() {
+        annotating = !annotating;
+        this.style.background = annotating ? '#dc2626' : 'transparent';
+        toast(annotating ? 'Tap image to mark' : 'Marking off');
+    });
+
+    overlay.querySelector('#zoom-img').addEventListener('click', function(e) {
+        if (!annotating) return;
+        var rect = this.getBoundingClientRect();
+        var x = e.clientX - rect.left;
+        var y = e.clientY - rect.top;
+        var circle = document.createElement('div');
+        circle.style.cssText = 'position:absolute;width:40px;height:40px;border:3px solid red;border-radius:50%;left:' + (x - 20) + 'px;top:' + (y - 20) + 'px;pointer-events:none;';
+        this.parentElement.style.position = 'relative';
+        this.parentElement.appendChild(circle);
+    });
+}
+
+// ===== SPENDING CALENDAR =====
+function renderCalendar() {
+    var now = new Date();
+    var year = screenParams.year || now.getFullYear();
+    var month = screenParams.month !== undefined ? screenParams.month : now.getMonth();
+    var firstDay = new Date(year, month, 1).getDay();
+    var daysInMonth = new Date(year, month + 1, 0).getDate();
+    var monthName = new Date(year, month).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+
+    // Get spending per day
+    var dayTotals = {};
+    var maxSpend = 0;
+    appData.bills.forEach(function(b) {
+        var d = new Date(b.date);
+        if (d.getFullYear() === year && d.getMonth() === month) {
+            var day = d.getDate();
+            dayTotals[day] = (dayTotals[day] || 0) + b.calculatedTotal;
+            if (dayTotals[day] > maxSpend) maxSpend = dayTotals[day];
+        }
+    });
+
+    var monthTotal = Object.values(dayTotals).reduce(function(s, v) { return s + v; }, 0);
+
+    // Build calendar grid
+    var cells = '';
+    for (var i = 0; i < firstDay; i++) cells += '<div class="cal-cell empty"></div>';
+    for (var d = 1; d <= daysInMonth; d++) {
+        var spent = dayTotals[d] || 0;
+        var intensity = maxSpend > 0 ? Math.min(spent / maxSpend, 1) : 0;
+        var cls = 'cal-cell';
+        if (intensity > 0.7) cls += ' hot';
+        else if (intensity > 0.3) cls += ' warm';
+        else if (intensity > 0) cls += ' mild';
+        cells += '<div class="' + cls + '" data-action="cal-day" data-day="' + d + '">' +
+            '<span class="cal-day-num">' + d + '</span>' +
+            (spent > 0 ? '<span class="cal-day-amt">' + (spent >= 1000 ? Math.round(spent / 1000) + 'k' : spent) + '</span>' : '') +
+            '</div>';
+    }
+
+    return '<div class="screen-header">' +
+        '<button class="back-btn" data-action="back">&#x2190;</button>' +
+        '<h1>Calendar</h1><div></div></div>' +
+        '<div class="cal-nav">' +
+        '<button class="btn btn-ghost btn-sm" data-action="cal-prev">&#x25C0;</button>' +
+        '<strong>' + monthName + '</strong>' +
+        '<button class="btn btn-ghost btn-sm" data-action="cal-next">&#x25B6;</button>' +
+        '</div>' +
+        '<div class="cal-total">Month Total: <strong>' + fmt(monthTotal) + '</strong></div>' +
+        '<div class="cal-grid">' +
+        '<div class="cal-head">S</div><div class="cal-head">M</div><div class="cal-head">T</div><div class="cal-head">W</div><div class="cal-head">T</div><div class="cal-head">F</div><div class="cal-head">S</div>' +
+        cells + '</div>';
+}
+
+// ===== EMAIL BACKUP =====
+function emailBackup() {
+    var data = JSON.stringify(appData, null, 2);
+    var blob = new Blob([data], { type: 'application/json' });
+    var date = new Date().toISOString().split('T')[0];
+    var subject = 'Bill Tracker Backup - ' + date;
+    var body = 'Attached is your Bill Tracker backup from ' + date + '. Import this file to restore data.';
+
+    // On mobile, mailto with attachment doesn't work well
+    // Best approach: download + open mail app
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'bill-tracker-backup-' + date + '.json';
+    a.click();
+    URL.revokeObjectURL(url);
+
+    // Open email compose
+    setTimeout(function() {
+        window.location.href = 'mailto:?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body + '\n\nNote: Attach the downloaded JSON file to this email.');
+    }, 500);
+    toast('Backup downloaded — attach to email');
+}
+
+// ===== QR SYNC (Offline to Offline) =====
+function showQRSync() {
+    // Generate a compact data summary as QR-compatible text
+    var summary = {
+        s: appData.suppliers.map(function(s) { return { n: s.name, b: getBalance(s.id) }; }),
+        t: appData.bills.length,
+        p: appData.payments.length,
+        d: new Date().toISOString().split('T')[0]
+    };
+    var jsonStr = JSON.stringify(summary);
+
+    // For full data transfer, we split into chunks and use a simpler approach
+    var overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = '<div class="modal-sheet">' +
+        '<div class="modal-handle"></div>' +
+        '<h3 style="margin-bottom:12px">Offline Sync via QR</h3>' +
+        '<p class="fs-sm" style="color:var(--text-secondary);margin-bottom:16px">For full data transfer, use Backup/Restore (JSON file). QR shows a summary for quick verification.</p>' +
+        '<div class="qr-display" id="qr-display"></div>' +
+        '<div style="margin-top:12px">' +
+        '<p class="fs-sm"><strong>Summary:</strong> ' + appData.suppliers.length + ' suppliers, ' + appData.bills.length + ' bills</p>' +
+        '<p class="fs-sm" style="margin-top:8px"><strong>To fully sync:</strong></p>' +
+        '<p class="fs-sm">1. On this device: More → Backup Data (downloads .json)</p>' +
+        '<p class="fs-sm">2. Transfer file to other device (WhatsApp/Bluetooth/USB)</p>' +
+        '<p class="fs-sm">3. On other device: More → Restore Data</p>' +
+        '</div>' +
+        '<button class="btn btn-ghost mt-16" id="close-qr">Close</button>' +
+        '</div>';
+    document.body.appendChild(overlay);
+
+    // Generate simple QR using a canvas (basic QR-like visual)
+    var qrDiv = overlay.querySelector('#qr-display');
+    qrDiv.innerHTML = '<div style="background:#fff;padding:16px;border-radius:8px;text-align:center;">' +
+        '<div style="font-family:monospace;font-size:10px;word-break:break-all;max-height:200px;overflow:auto;text-align:left;padding:8px;background:#f5f5f5;border-radius:4px;">' + jsonStr + '</div>' +
+        '<p style="margin-top:8px;font-size:11px;color:#666">Copy this on other device → import</p></div>';
+
+    overlay.querySelector('#close-qr').addEventListener('click', function() { overlay.remove(); });
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+}
+
+// ===== EXPORT PDF LEDGER =====
+function exportPDFLedger() {
+    // Ask which supplier or all
+    var overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = '<div class="modal-sheet">' +
+        '<div class="modal-handle"></div>' +
+        '<h3 style="margin-bottom:12px">Export PDF Ledger</h3>' +
+        '<div class="form-group" style="padding:0"><label>Supplier</label>' +
+        '<select class="form-select" id="pdf-supplier">' +
+        '<option value="all">All Suppliers</option>' +
+        appData.suppliers.map(function(s) { return '<option value="' + s.id + '">' + s.name + '</option>'; }).join('') +
+        '</select></div>' +
+        '<div class="form-group" style="padding:0"><label>Month (optional)</label>' +
+        '<input class="form-input" type="month" id="pdf-month" value="' + new Date().toISOString().substring(0, 7) + '" /></div>' +
+        '<div style="display:flex;gap:10px;margin-top:16px">' +
+        '<button class="btn btn-primary" id="gen-pdf">Generate PDF</button>' +
+        '<button class="btn btn-ghost" id="close-pdf">Cancel</button>' +
+        '</div></div>';
+    document.body.appendChild(overlay);
+
+    overlay.querySelector('#close-pdf').addEventListener('click', function() { overlay.remove(); });
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+
+    overlay.querySelector('#gen-pdf').addEventListener('click', function() {
+        var supId = document.getElementById('pdf-supplier').value;
+        var monthStr = document.getElementById('pdf-month').value;
+        overlay.remove();
+        generatePDFLedger(supId, monthStr);
+    });
+}
+
+function generatePDFLedger(supId, monthStr) {
+    var S = 3;
+    var W = 580 * S;
+    var pad = 36 * S;
+    var LH = 20 * S;
+    var dash = '-'.repeat(54);
+
+    // Filter data
+    var suppliers = supId === 'all' ? appData.suppliers : appData.suppliers.filter(function(s) { return s.id === supId; });
+    var monthFilter = monthStr ? monthStr : null;
+
+    var allRows = [];
+    suppliers.forEach(function(sup) {
+        var ledger = getRunningLedger(sup.id);
+        if (monthFilter) {
+            ledger = ledger.filter(function(e) { return e.date && e.date.startsWith(monthFilter); });
+        }
+        if (ledger.length > 0) {
+            allRows.push({ type: 'header', name: sup.name, balance: getBalance(sup.id) });
+            ledger.forEach(function(e) { allRows.push(e); });
+            allRows.push({ type: 'separator' });
+        }
+    });
+
+    if (allRows.length === 0) { toast('No data for this period'); return; }
+
+    // Calculate canvas height
+    var totalLines = 6 + allRows.length * 1.2;
+    var H = Math.max(totalLines * LH + pad * 2, 400 * S);
+
+    var canvas = document.createElement('canvas');
+    canvas.width = W;
+    canvas.height = H;
+    var ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, W, H);
+    var y = pad;
+
+    function txt(t, bold, color) {
+        ctx.font = (bold ? 'bold ' : '') + (13 * S) + 'px "Courier New",monospace';
+        ctx.fillStyle = color || '#111';
+        ctx.fillText(t, pad, y);
+        y += LH;
+    }
+
+    function txtLR(l, r, bold) {
+        ctx.font = (bold ? 'bold ' : '') + (13 * S) + 'px "Courier New",monospace';
+        ctx.fillStyle = '#111';
+        ctx.fillText(l, pad, y);
+        var w = ctx.measureText(r).width;
+        ctx.fillText(r, W - pad - w, y);
+        y += LH;
+    }
+
+    // Title
+    ctx.font = 'bold ' + (15 * S) + 'px "Courier New",monospace';
+    ctx.fillStyle = '#111';
+    var title = 'LEDGER STATEMENT';
+    var tw = ctx.measureText(title).width;
+    ctx.fillText(title, (W - tw) / 2, y); y += LH * 1.3;
+    txt('Period: ' + (monthFilter || 'All Time'));
+    txt(dash);
+    txtLR('Date        Type      Amount', 'Balance', true);
+    txt(dash);
+
+    allRows.forEach(function(row) {
+        if (row.type === 'header') {
+            y += LH * 0.3;
+            txt('[ ' + row.name.toUpperCase() + ' ]  Balance: Rs.' + Math.round(row.balance), true);
+            txt(dash);
+        } else if (row.type === 'separator') {
+            txt('');
+        } else {
+            var d = row.date ? fmtDateShort(row.date).padEnd(12) : '            ';
+            var tp = (row.type === 'bill' ? 'BILL' : 'PAID').padEnd(10);
+            var amt = ((row.type === 'bill' ? '+' : '-') + Math.round(row.amount)).padStart(10);
+            var bal = String(Math.round(row.balance));
+            ctx.font = (13 * S) + 'px "Courier New",monospace';
+            ctx.fillStyle = row.type === 'bill' ? '#111' : '#059669';
+            ctx.fillText(d + tp + amt, pad, y);
+            var bw = ctx.measureText(bal).width;
+            ctx.fillText(bal, W - pad - bw, y);
+            y += LH;
+        }
+    });
+
+    txt(dash);
+    txt('Generated: ' + new Date().toLocaleDateString('en-IN'));
+
+    // Crop and export
+    var fH = y + pad;
+    var fc = document.createElement('canvas');
+    fc.width = W; fc.height = fH;
+    var fctx = fc.getContext('2d');
+    fctx.fillStyle = '#fff'; fctx.fillRect(0, 0, fc.width, fH);
+    fctx.drawImage(canvas, 0, 0);
+
+    fc.toBlob(function(blob) {
+        if (navigator.share && navigator.canShare) {
+            try {
+                var file = new File([blob], 'ledger-' + (monthStr || 'all') + '.png', { type: 'image/png' });
+                if (navigator.canShare({ files: [file] })) {
+                    navigator.share({ files: [file], title: 'Ledger' }).catch(function() {});
+                    return;
+                }
+            } catch (e) {}
+        }
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url; a.download = 'ledger-' + (monthStr || 'all') + '.png';
+        a.click(); URL.revokeObjectURL(url);
+        toast('Ledger PDF saved!');
+    }, 'image/png', 1.0);
+}
+
+// ===== CALENDAR NAV ACTIONS =====
+function handleCalendarAction(action, dataset) {
+    var now = new Date();
+    var year = screenParams.year || now.getFullYear();
+    var month = screenParams.month !== undefined ? screenParams.month : now.getMonth();
+
+    if (action === 'cal-prev') {
+        month--;
+        if (month < 0) { month = 11; year--; }
+        navigate('calendar', { year: year, month: month });
+    } else if (action === 'cal-next') {
+        month++;
+        if (month > 11) { month = 0; year++; }
+        navigate('calendar', { year: year, month: month });
+    } else if (action === 'cal-day') {
+        var day = parseInt(dataset.day);
+        var dateStr = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+        var dayBills = appData.bills.filter(function(b) { return b.date === dateStr; });
+        if (dayBills.length > 0) {
+            toast(dayBills.length + ' bill(s) on ' + fmtDate(dateStr) + ' = ' + fmt(dayBills.reduce(function(s, b) { return s + b.calculatedTotal; }, 0)));
+        }
+    }
 }
 
 // ===== INIT =====
