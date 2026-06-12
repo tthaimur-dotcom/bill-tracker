@@ -1,4 +1,4 @@
-// ====================== BILL TRACKER PRO v3.0 ======================
+﻿// ====================== BILL TRACKER PRO v3.0 ======================
 // Advanced Supplier Bill Tracker - Mobile First PWA
 // Features: Ledger, Verification, Discrepancy Log, Analytics, Edit Bills
 
@@ -1726,130 +1726,147 @@ function buildStatementText(supplierId) {
 }
 
 // ===== SHARE AS IMAGE (receipt style) =====
+
+// ===== SHARE AS IMAGE (receipt style - clean) =====
 function shareCardAsImage(billId) {
-    const bill = appData.bills.find(b => b.id === billId);
+    var bill = appData.bills.find(function(b) { return b.id === billId; });
     if (!bill) return;
-    const sup = appData.suppliers.find(s => s.id === bill.supplierId);
-    const S = 3;
-    const W = 560 * S;
-    const pad = 36 * S;
-    const LH = 22 * S;
-    const dash = '-'.repeat(50);
-    const canvas = document.createElement('canvas');
-    const maxH = (20 + bill.items.length + (bill.hasMismatch ? 5 : 0) + (bill.photo ? 16 : 0)) * LH + pad * 2;
-    canvas.width = W;
-    canvas.height = maxH;
-    const ctx = canvas.getContext('2d');
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(0, 0, W, maxH);
-    let y = pad;
-
-    function txt(t, x, bold) { ctx.font = (bold ? 'bold ' : '') + (14 * S) + 'px "Courier New",monospace'; ctx.fillStyle = '#111'; ctx.fillText(t, x !== undefined ? x : pad, y); y += LH; }
-    function txtR(l, r, bold) { ctx.font = (bold ? 'bold ' : '') + (14 * S) + 'px "Courier New",monospace'; ctx.fillStyle = '#111'; ctx.fillText(l, pad, y); var w = ctx.measureText(r).width; ctx.fillText(r, W - pad - w, y); y += LH; }
-
+    var sup = appData.suppliers.find(function(s) { return s.id === bill.supplierId; });
+    var S = 2;
+    var W = 800 * S;
+    var pad = 50 * S;
+    var LH = 28 * S;
+    var contentW = W - pad * 2;
+    var lines = 14 + bill.items.length + (bill.hasMismatch ? 4 : 0);
+    if (bill.photo) lines += 14;
+    var H = lines * LH + pad * 2;
+    var canvas = document.createElement('canvas');
+    canvas.width = W; canvas.height = H;
+    var ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H);
+    var y = pad;
     if (bill.photo) {
         var img = new Image();
         img.onload = function() {
-            var ratio = Math.min((W - pad * 2) / img.width, (14 * LH) / img.height);
+            var maxPH = 12 * LH;
+            var ratio = Math.min(contentW / img.width, maxPH / img.height);
             var dw = img.width * ratio, dh = img.height * ratio;
             ctx.drawImage(img, (W - dw) / 2, y, dw, dh);
             y += dh + LH;
-            drawReceipt(ctx, canvas, W, pad, LH, y, bill, sup, S, dash, txt, txtR);
+            renderReceiptBody(ctx, W, pad, LH, y, bill, sup, S, contentW, canvas);
         };
         img.src = bill.photo;
     } else {
-        drawReceipt(ctx, canvas, W, pad, LH, y, bill, sup, S, dash, txt, txtR);
+        renderReceiptBody(ctx, W, pad, LH, y, bill, sup, S, contentW, canvas);
     }
 }
 
-function drawReceipt(ctx, canvas, W, pad, LH, y, bill, sup, S, dash, txt, txtR) {
+function renderReceiptBody(ctx, W, pad, LH, y, bill, sup, S, contentW, canvas) {
     var supName = sup ? sup.name.toUpperCase() : 'UNKNOWN';
-    var now = new Date();
-    var time = now.toLocaleTimeString('en-IN', {hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true}).toUpperCase();
+    var billDate = fmtDate(bill.date);
+    var time = new Date().toLocaleTimeString('en-IN', {hour:'2-digit',minute:'2-digit',hour12:true}).toUpperCase();
+    var F = 15 * S;
+    var FS = 13 * S;
+    var amtX = W - pad;
+    var qtyX = W - pad - 150 * S;
 
-    // Title centered
-    ctx.font = 'bold ' + (16 * S) + 'px "Courier New",monospace';
-    ctx.fillStyle = '#111';
-    var tw = ctx.measureText('BILL').width;
-    ctx.fillText('BILL', (W - tw) / 2, y); y += LH * 1.4;
+    function setFont(size, bold) { ctx.font = (bold ? 'bold ' : '') + size + 'px "Courier New", monospace'; }
+    function drawDash() { setFont(F, false); ctx.fillStyle = '#111'; ctx.fillText('----------------------------------------------', pad, y); y += LH; }
 
-    // Header
-    txtR('Bill No  : ' + (bill.billNumber || '-'), 'Date: ' + fmtDate(bill.date));
-    txtR('Customer : ' + supName, 'Time: ' + time);
-    txt(dash);
+    // TITLE centered
+    setFont(18 * S, true); ctx.fillStyle = '#111';
+    var title = 'BILL';
+    ctx.fillText(title, (W - ctx.measureText(title).width) / 2, y);
+    y += LH * 1.5;
 
-    // Column heads
-    ctx.font = 'bold ' + (14 * S) + 'px "Courier New",monospace';
-    ctx.fillStyle = '#111';
-    ctx.fillText('Sl  Item Name', pad, y);
-    var qX = W - pad - 180 * S;
-    var aX = W - pad;
-    ctx.fillText('Qty', qX, y);
-    var aw = ctx.measureText('Amount').width;
-    ctx.fillText('Amount', aX - aw, y);
+    // Header row 1
+    setFont(F, false); ctx.fillStyle = '#111';
+    ctx.fillText('Bill No  : ' + (bill.billNumber || '-'), pad, y);
+    var dt = 'Date: ' + billDate;
+    ctx.fillText(dt, W - pad - ctx.measureText(dt).width, y);
     y += LH;
-    txt(dash);
 
-    // Items
+    // Header row 2
+    ctx.fillText('Customer : ' + supName, pad, y);
+    var tt = 'Time: ' + time;
+    ctx.fillText(tt, W - pad - ctx.measureText(tt).width, y);
+    y += LH;
+
+    drawDash();
+
+    // Column header
+    setFont(F, true); ctx.fillStyle = '#111';
+    ctx.fillText('Sl', pad, y);
+    ctx.fillText('Item Name', pad + 40 * S, y);
+    ctx.fillText('Qty', qtyX, y);
+    var al = 'Amount';
+    ctx.fillText(al, amtX - ctx.measureText(al).width, y);
+    y += LH;
+
+    drawDash();
+
+    // Items - clean, no dashes between
     bill.items.forEach(function(item, i) {
-        ctx.font = (14 * S) + 'px "Courier New",monospace';
-        ctx.fillStyle = '#111';
+        setFont(F, false); ctx.fillStyle = '#111';
         var sl = String(i + 1);
-        var name = (item.name || 'Item ' + (i + 1)).toUpperCase();
-        if (name.length > 26) name = name.substring(0, 25) + '..';
-        ctx.fillText(sl + '   ' + name, pad, y);
-        var qStr = String(item.qty || '');
-        var aStr = String(Math.round(item.calculatedTotal));
-        var qw2 = ctx.measureText(qStr).width;
-        ctx.fillText(qStr, qX + 30 * S - qw2, y);
-        ctx.font = 'bold ' + (14 * S) + 'px "Courier New",monospace';
-        var aw2 = ctx.measureText(aStr).width;
-        ctx.fillText(aStr, aX - aw2, y);
+        var name = (item.name || 'ITEM ' + (i + 1)).toUpperCase();
+        if (name.length > 20) name = name.substring(0, 19) + '..';
+        ctx.fillText(sl, pad + (sl.length === 1 ? 6 * S : 0), y);
+        ctx.fillText(name, pad + 40 * S, y);
+        var qs = String(item.qty || '');
+        ctx.fillText(qs, qtyX + 30 * S - ctx.measureText(qs).width, y);
+        setFont(F, true);
+        var as2 = String(Math.round(item.calculatedTotal));
+        ctx.fillText(as2, amtX - ctx.measureText(as2).width, y);
         y += LH;
     });
 
-    txt(dash);
+    drawDash();
 
     // NET TOTAL
-    ctx.font = 'bold ' + (15 * S) + 'px "Courier New",monospace';
-    ctx.fillStyle = '#111';
-    var total = String(Math.round(bill.calculatedTotal));
-    var label = 'NET TOTAL :';
-    var lw = ctx.measureText(label).width;
-    var tvw = ctx.measureText(total).width;
-    ctx.fillText(label, aX - tvw - lw - 12 * S, y);
-    ctx.fillText(total, aX - tvw, y);
+    setFont(16 * S, true); ctx.fillStyle = '#111';
+    var totalStr = String(Math.round(bill.calculatedTotal));
+    var netLbl = 'NET TOTAL :';
+    var nlw = ctx.measureText(netLbl).width;
+    var tvw = ctx.measureText(totalStr).width;
+    ctx.fillText(netLbl, amtX - tvw - nlw - 16 * S, y);
+    ctx.fillText(totalStr, amtX - tvw, y);
     y += LH;
-    txt(dash);
 
-    // Words
-    ctx.font = 'bold ' + (12 * S) + 'px "Courier New",monospace';
-    ctx.fillStyle = '#111';
+    drawDash();
+
+    // Amount in words
+    setFont(FS, true); ctx.fillStyle = '#111';
     ctx.fillText('Amount: Rupees ' + numberToWords(Math.round(bill.calculatedTotal)) + ' Only', pad, y);
     y += LH;
 
     // Mismatch
     if (bill.hasMismatch) {
-        txt(dash);
-        ctx.font = 'bold ' + (14 * S) + 'px "Courier New",monospace';
-        ctx.fillStyle = '#cc0000';
+        drawDash();
         var diff = bill.calculatedTotal - bill.writtenTotal;
-        ctx.fillText('MISMATCH: ' + (diff > 0 ? 'EXCESS' : 'SHORT') + ' Rs.' + Math.abs(Math.round(diff)), pad, y); y += LH;
-        ctx.fillStyle = '#333';
-        ctx.font = (12 * S) + 'px "Courier New",monospace';
-        ctx.fillText('Dealer: Rs.' + Math.round(bill.writtenTotal) + '  |  Calc: Rs.' + Math.round(bill.calculatedTotal), pad, y); y += LH;
-        ctx.fillText('Please verify the correct amount.', pad, y); y += LH;
+        setFont(F, true); ctx.fillStyle = '#cc0000';
+        ctx.fillText('MISMATCH: ' + (diff > 0 ? 'EXCESS' : 'SHORT') + ' Rs.' + Math.abs(Math.round(diff)), pad, y);
+        y += LH;
+        setFont(FS, false); ctx.fillStyle = '#333';
+        ctx.fillText('Dealer: Rs.' + Math.round(bill.writtenTotal) + '  |  Calc: Rs.' + Math.round(bill.calculatedTotal), pad, y);
+        y += LH;
+        ctx.fillText('Please verify the correct amount.', pad, y);
+        y += LH;
     }
 
-    txt(dash);
-    txtR('For Reference Only', 'Page:1');
+    drawDash();
 
-    // Crop and export
-    var fH = y + pad;
+    // Footer
+    setFont(FS, false); ctx.fillStyle = '#111';
+    ctx.fillText('For Reference Only', pad, y);
+    var pg = 'Page:1';
+    ctx.fillText(pg, W - pad - ctx.measureText(pg).width, y);
+    y += LH;
+
+    // Export cropped
+    var fH = y + pad / 2;
     var fc = document.createElement('canvas');
-    fc.width = canvas.width; fc.height = fH;
+    fc.width = W; fc.height = fH;
     var fctx = fc.getContext('2d');
     fctx.fillStyle = '#fff'; fctx.fillRect(0, 0, fc.width, fH);
     fctx.drawImage(canvas, 0, 0);
@@ -1857,8 +1874,8 @@ function drawReceipt(ctx, canvas, W, pad, LH, y, bill, sup, S, dash, txt, txtR) 
         if (navigator.share && navigator.canShare) {
             try {
                 var file = new File([blob], 'bill-' + (sup ? sup.name : 'x') + '-' + bill.date + '.png', {type:'image/png'});
-                if (navigator.canShare({files:[file]})) { navigator.share({files:[file],title:'Bill'}).catch(function(){}); return; }
-            } catch(e){}
+                if (navigator.canShare({files:[file]})) { navigator.share({files:[file], title:'Bill'}).catch(function(){}); return; }
+            } catch(e) {}
         }
         var url = URL.createObjectURL(blob);
         var a = document.createElement('a');
@@ -1867,7 +1884,6 @@ function drawReceipt(ctx, canvas, W, pad, LH, y, bill, sup, S, dash, txt, txtR) 
         toast('Image saved!');
     }, 'image/png', 1.0);
 }
-
 function numberToWords(n) {
     if (n === 0) return 'Zero';
     var ones = ['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];
