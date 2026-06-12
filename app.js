@@ -1771,7 +1771,7 @@ function renderReceiptBody(ctx, W, pad, LH, y, bill, sup, S, contentW, canvas) {
     var qtyX = W - pad - 150 * S;
 
     function setFont(size, bold) { ctx.font = (bold ? 'bold ' : '') + size + 'px "Courier New", monospace'; }
-    function drawDash() { setFont(F, false); ctx.fillStyle = '#111'; ctx.fillText('----------------------------------------------', pad, y); y += LH; }
+    function drawLine(thick) { ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(W - pad, y); ctx.strokeStyle = '#000'; ctx.lineWidth = (thick ? 2.5 : 1) * S; ctx.stroke(); y += LH * 0.6; }
 
     // TITLE centered
     setFont(18 * S, true); ctx.fillStyle = '#111';
@@ -1792,7 +1792,7 @@ function renderReceiptBody(ctx, W, pad, LH, y, bill, sup, S, contentW, canvas) {
     ctx.fillText(tt, W - pad - ctx.measureText(tt).width, y);
     y += LH;
 
-    drawDash();
+    drawLine(true);
 
     // Column header
     setFont(F, true); ctx.fillStyle = '#111';
@@ -1803,7 +1803,7 @@ function renderReceiptBody(ctx, W, pad, LH, y, bill, sup, S, contentW, canvas) {
     ctx.fillText(al, amtX - ctx.measureText(al).width, y);
     y += LH;
 
-    drawDash();
+    drawLine(false);
 
     // Items - clean, no dashes between
     bill.items.forEach(function(item, i) {
@@ -1821,7 +1821,7 @@ function renderReceiptBody(ctx, W, pad, LH, y, bill, sup, S, contentW, canvas) {
         y += LH;
     });
 
-    drawDash();
+    drawLine(false);
 
     // NET TOTAL
     setFont(16 * S, true); ctx.fillStyle = '#111';
@@ -1833,7 +1833,7 @@ function renderReceiptBody(ctx, W, pad, LH, y, bill, sup, S, contentW, canvas) {
     ctx.fillText(totalStr, amtX - tvw, y);
     y += LH;
 
-    drawDash();
+    drawLine(true);
 
     // Amount in words
     setFont(FS, true); ctx.fillStyle = '#111';
@@ -1842,7 +1842,7 @@ function renderReceiptBody(ctx, W, pad, LH, y, bill, sup, S, contentW, canvas) {
 
     // Mismatch
     if (bill.hasMismatch) {
-        drawDash();
+    drawLine(false);
         var diff = bill.calculatedTotal - bill.writtenTotal;
         setFont(F, true); ctx.fillStyle = '#cc0000';
         ctx.fillText('MISMATCH: ' + (diff > 0 ? 'EXCESS' : 'SHORT') + ' Rs.' + Math.abs(Math.round(diff)), pad, y);
@@ -1854,7 +1854,7 @@ function renderReceiptBody(ctx, W, pad, LH, y, bill, sup, S, contentW, canvas) {
         y += LH;
     }
 
-    drawDash();
+    drawLine(true);
 
     // Footer
     setFont(FS, false); ctx.fillStyle = '#111';
@@ -2281,11 +2281,10 @@ function exportPDFLedger() {
 }
 
 function generatePDFLedger(supId, monthStr) {
-    var S = 3;
-    var W = 580 * S;
-    var pad = 36 * S;
-    var LH = 20 * S;
-    var dash = '-'.repeat(54);
+    var S = 2;
+    var W = 800 * S;
+    var pad = 50 * S;
+    var LH = 24 * S;
 
     // Filter data
     var suppliers = supId === 'all' ? appData.suppliers : appData.suppliers.filter(function(s) { return s.id === supId; });
@@ -2306,8 +2305,7 @@ function generatePDFLedger(supId, monthStr) {
 
     if (allRows.length === 0) { toast('No data for this period'); return; }
 
-    // Calculate canvas height
-    var totalLines = 6 + allRows.length * 1.2;
+    var totalLines = 8 + allRows.length * 1.2;
     var H = Math.max(totalLines * LH + pad * 2, 400 * S);
 
     var canvas = document.createElement('canvas');
@@ -2318,15 +2316,18 @@ function generatePDFLedger(supId, monthStr) {
     ctx.fillRect(0, 0, W, H);
     var y = pad;
 
+    function setF(size, bold) { ctx.font = (bold ? 'bold ' : '') + size + 'px "Courier New",monospace'; }
+    function drawL(thick) { ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(W - pad, y); ctx.strokeStyle = '#000'; ctx.lineWidth = (thick ? 2.5 : 1) * S; ctx.stroke(); y += LH * 0.5; }
+
     function txt(t, bold, color) {
-        ctx.font = (bold ? 'bold ' : '') + (13 * S) + 'px "Courier New",monospace';
+        setF(14 * S, bold);
         ctx.fillStyle = color || '#111';
         ctx.fillText(t, pad, y);
         y += LH;
     }
 
     function txtLR(l, r, bold) {
-        ctx.font = (bold ? 'bold ' : '') + (13 * S) + 'px "Courier New",monospace';
+        setF(14 * S, bold);
         ctx.fillStyle = '#111';
         ctx.fillText(l, pad, y);
         var w = ctx.measureText(r).width;
@@ -2335,29 +2336,28 @@ function generatePDFLedger(supId, monthStr) {
     }
 
     // Title
-    ctx.font = 'bold ' + (15 * S) + 'px "Courier New",monospace';
-    ctx.fillStyle = '#111';
+    setF(16 * S, true); ctx.fillStyle = '#111';
     var title = 'LEDGER STATEMENT';
     var tw = ctx.measureText(title).width;
     ctx.fillText(title, (W - tw) / 2, y); y += LH * 1.3;
     txt('Period: ' + (monthFilter || 'All Time'));
-    txt(dash);
+    drawL(true);
     txtLR('Date        Type      Amount', 'Balance', true);
-    txt(dash);
+    drawL(false);
 
     allRows.forEach(function(row) {
         if (row.type === 'header') {
             y += LH * 0.3;
             txt('[ ' + row.name.toUpperCase() + ' ]  Balance: Rs.' + Math.round(row.balance), true);
-            txt(dash);
+            drawL(true);
         } else if (row.type === 'separator') {
-            txt('');
+            y += LH * 0.3;
         } else {
             var d = row.date ? fmtDateShort(row.date).padEnd(12) : '            ';
             var tp = (row.type === 'bill' ? 'BILL' : 'PAID').padEnd(10);
             var amt = ((row.type === 'bill' ? '+' : '-') + Math.round(row.amount)).padStart(10);
             var bal = String(Math.round(row.balance));
-            ctx.font = (13 * S) + 'px "Courier New",monospace';
+            setF(14 * S, false);
             ctx.fillStyle = row.type === 'bill' ? '#111' : '#059669';
             ctx.fillText(d + tp + amt, pad, y);
             var bw = ctx.measureText(bal).width;
@@ -2366,7 +2366,7 @@ function generatePDFLedger(supId, monthStr) {
         }
     });
 
-    txt(dash);
+    drawL(true);
     txt('Generated: ' + new Date().toLocaleDateString('en-IN'));
 
     // Crop and export
