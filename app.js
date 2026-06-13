@@ -13,9 +13,47 @@ const THEME_KEY = 'billTrackerTheme';
 const SYNC_URL_KEY = 'billTrackerSyncUrl';
 const PENDING_SYNC_KEY = 'billTrackerPendingSync';
 
+// === IndexedDB (survives Chrome history clear) ===
+const IDB_NAME = 'BillTrackerDB';
+const IDB_STORE = 'appdata';
+const IDB_VERSION = 1;
+
+function openIDB() {
+    return new Promise(function(resolve, reject) {
+        var req = indexedDB.open(IDB_NAME, IDB_VERSION);
+        req.onupgradeneeded = function(e) {
+            var db = e.target.result;
+            if (!db.objectStoreNames.contains(IDB_STORE)) {
+                db.createObjectStore(IDB_STORE);
+            }
+        };
+        req.onsuccess = function(e) { resolve(e.target.result); };
+        req.onerror = function() { reject(); };
+    });
+}
+
+function saveToIDB(data) {
+    openIDB().then(function(db) {
+        var tx = db.transaction(IDB_STORE, 'readwrite');
+        tx.objectStore(IDB_STORE).put(data, 'main');
+    }).catch(function() {});
+}
+
+function loadFromIDB() {
+    return openIDB().then(function(db) {
+        return new Promise(function(resolve, reject) {
+            var tx = db.transaction(IDB_STORE, 'readonly');
+            var req = tx.objectStore(IDB_STORE).get('main');
+            req.onsuccess = function() { resolve(req.result || null); };
+            req.onerror = function() { resolve(null); };
+        });
+    }).catch(function() { return null; });
+}
+
+// === Load data: try localStorage first, fallback to IndexedDB ===
 function loadData() {
     try {
-        const raw = localStorage.getItem(DB_KEY);
+        var raw = localStorage.getItem(DB_KEY);
         if (raw) return JSON.parse(raw);
     } catch (e) {}
     return { suppliers: [], bills: [], payments: [], discrepancies: [] };
@@ -23,6 +61,24 @@ function loadData() {
 
 function saveData() {
     localStorage.setItem(DB_KEY, JSON.stringify(appData));
+    // Also save to IndexedDB (survives clear history)
+    saveToIDB(appData);
+}
+
+// On startup: if localStorage is empty but IndexedDB has data, restore it
+function initDataRecovery() {
+    var lsData = localStorage.getItem(DB_KEY);
+    if (!lsData || lsData === '{"suppliers":[],"bills":[],"payments":[],"discrepancies":[]}') {
+        loadFromIDB().then(function(idbData) {
+            if (idbData && idbData.suppliers && idbData.suppliers.length > 0) {
+                appData = idbData;
+                if (!appData.discrepancies) appData.discrepancies = [];
+                localStorage.setItem(DB_KEY, JSON.stringify(appData));
+                toast('Data recovered from backup!');
+                render();
+            }
+        });
+    }
 }
 
 function getSyncUrl() {
@@ -2539,3 +2595,4 @@ function handleCalendarAction(action, dataset) {
 
 // ===== INIT =====
 render();
+initDataRecovery();
