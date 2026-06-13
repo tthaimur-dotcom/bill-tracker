@@ -945,8 +945,11 @@ function renderSupplierStatement() {
         </div>
 
         <div class="btn-row mt-16">
-            <button class="btn btn-primary btn-sm" data-action="copy-statement" data-id="${sup.id}">📋 Copy Statement</button>
-            <button class="btn btn-success btn-sm" data-action="whatsapp-statement" data-id="${sup.id}">💬 WhatsApp</button>
+            <button class="btn btn-primary btn-sm" data-action="pdf-statement" data-id="${sup.id}">� PDF Statement</button>
+        </div>
+        <div class="btn-row">
+            <button class="btn btn-outline btn-sm" data-action="copy-statement" data-id="${sup.id}">📋 Copy</button>
+            <button class="btn btn-outline btn-sm" data-action="whatsapp-statement" data-id="${sup.id}">💬 WhatsApp</button>
         </div>
     `;
 }
@@ -1334,6 +1337,7 @@ function handleAction(action, dataset) {
         case 'view-statement': navigate('supplier-statement', { id: dataset.id }); break;
         case 'copy-statement': copyStatement(dataset.id); break;
         case 'whatsapp-statement': whatsappStatement(dataset.id); break;
+        case 'pdf-statement': generateStatementPDF(dataset.id); break;
 
         case 'go-discrepancies': navigate('discrepancies'); break;
         case 'go-history': navigate('history'); break;
@@ -1694,6 +1698,120 @@ function copyStatement(supplierId) {
 function whatsappStatement(supplierId) {
     const text = buildStatementText(supplierId);
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+}
+
+// ===== PDF STATEMENT (image-based) =====
+function generateStatementPDF(supplierId) {
+    var sup = appData.suppliers.find(function(s) { return s.id === supplierId; });
+    if (!sup) { toast('Supplier not found'); return; }
+    var ledger = getRunningLedger(supplierId);
+    var balance = getBalance(supplierId);
+    var totalBilled = appData.bills.filter(function(b) { return b.supplierId === supplierId; }).reduce(function(s, b) { return s + b.calculatedTotal; }, 0);
+    var totalPaid = appData.payments.filter(function(p) { return p.supplierId === supplierId; }).reduce(function(s, p) { return s + p.amount; }, 0);
+
+    var S = 2;
+    var W = 800 * S;
+    var pad = 50 * S;
+    var LH = 26 * S;
+    var F = 14 * S;
+    var amtX = W - pad;
+
+    // Height calc
+    var lines = 12 + ledger.length + 4;
+    var H = lines * LH + pad * 2;
+
+    var canvas = document.createElement('canvas');
+    canvas.width = W; canvas.height = H;
+    var ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+    var y = pad;
+
+    function setFont(size, bold) { ctx.font = (bold ? 'bold ' : '') + size + 'px "Courier New", monospace'; }
+    function line(thick) { ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(W - pad, y); ctx.strokeStyle = '#000'; ctx.lineWidth = (thick ? 2.5 : 1) * S; ctx.stroke(); y += LH * 0.5; }
+    function txtL(t, bold) { setFont(F, bold); ctx.fillStyle = '#111'; ctx.fillText(t, pad, y); y += LH; }
+    function txtLR(l, r, bold) { setFont(F, bold); ctx.fillStyle = '#111'; ctx.fillText(l, pad, y); var w = ctx.measureText(r).width; ctx.fillText(r, W - pad - w, y); y += LH; }
+
+    // Title
+    setFont(18 * S, true); ctx.fillStyle = '#111';
+    var title = 'ACCOUNT STATEMENT';
+    ctx.fillText(title, (W - ctx.measureText(title).width) / 2, y);
+    y += LH * 1.4;
+
+    // Supplier info
+    txtL('Supplier : ' + sup.name.toUpperCase(), true);
+    txtLR('Date     : ' + fmtDate(new Date().toISOString()), sup.phone ? 'Ph: ' + sup.phone : '');
+    y += LH * 0.3;
+
+    line(true);
+
+    // Summary
+    txtLR('Total Billed', 'Rs.' + Math.round(totalBilled));
+    txtLR('Total Paid', 'Rs.' + Math.round(totalPaid));
+    setFont(F, true); ctx.fillStyle = '#111';
+    ctx.fillText('BALANCE DUE', pad, y);
+    var balStr = 'Rs.' + Math.round(balance);
+    ctx.fillText(balStr, W - pad - ctx.measureText(balStr).width, y);
+    y += LH;
+
+    line(true);
+    y += LH * 0.3;
+
+    // Column headers
+    setFont(F, true); ctx.fillStyle = '#111';
+    ctx.fillText('Date', pad, y);
+    ctx.fillText('Type', pad + 130 * S, y);
+    ctx.fillText('Amount', pad + 240 * S, y);
+    var bh = 'Balance';
+    ctx.fillText(bh, W - pad - ctx.measureText(bh).width, y);
+    y += LH;
+
+    line(false);
+
+    // Transactions
+    ledger.forEach(function(entry) {
+        setFont(F, false);
+        ctx.fillStyle = entry.type === 'bill' ? '#111' : '#059669';
+        var d = fmtDateShort(entry.date);
+        var tp = entry.type === 'bill' ? 'BILL' : 'PAID';
+        var amt = (entry.type === 'bill' ? '+' : '-') + Math.round(entry.amount);
+        var bal = String(Math.round(entry.balance));
+        ctx.fillText(d, pad, y);
+        ctx.fillText(tp, pad + 130 * S, y);
+        ctx.fillText(amt, pad + 240 * S, y);
+        setFont(F, true);
+        ctx.fillStyle = '#111';
+        ctx.fillText(bal, W - pad - ctx.measureText(bal).width, y);
+        y += LH;
+    });
+
+    line(true);
+
+    // Footer
+    setFont(12 * S, false); ctx.fillStyle = '#666';
+    ctx.fillText('Generated: ' + new Date().toLocaleDateString('en-IN') + '  |  For Reference Only', pad, y);
+    y += LH;
+
+    // Crop and export
+    var fH = y + pad / 2;
+    var fc = document.createElement('canvas');
+    fc.width = W; fc.height = fH;
+    var fctx = fc.getContext('2d');
+    fctx.fillStyle = '#fff'; fctx.fillRect(0, 0, fc.width, fH);
+    fctx.drawImage(canvas, 0, 0);
+
+    fc.toBlob(function(blob) {
+        if (navigator.share && navigator.canShare) {
+            try {
+                var file = new File([blob], 'statement-' + sup.name + '-' + new Date().toISOString().split('T')[0] + '.png', {type:'image/png'});
+                if (navigator.canShare({files:[file]})) { navigator.share({files:[file], title:'Statement'}).catch(function(){}); return; }
+            } catch(e) {}
+        }
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url; a.download = 'statement-' + sup.name + '-' + new Date().toISOString().split('T')[0] + '.png';
+        a.click(); URL.revokeObjectURL(url);
+        toast('Statement saved!');
+    }, 'image/png', 1.0);
 }
 
 function buildStatementText(supplierId) {
