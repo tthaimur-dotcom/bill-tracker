@@ -197,9 +197,7 @@ function uid() { return Date.now().toString(36) + Math.random().toString(36).sub
 function fmt(n) { return '₹' + parseFloat(n || 0).toFixed(2); }
 function fmtShort(n) {
     const num = parseFloat(n || 0);
-    if (num >= 100000) return '₹' + (num / 100000).toFixed(1) + 'L';
-    if (num >= 1000) return '₹' + (num / 1000).toFixed(1) + 'K';
-    return '₹' + num.toFixed(0);
+    return '₹' + num.toLocaleString('en-IN', { maximumFractionDigits: 0 });
 }
 function fmtDate(d) {
     if (!d) return '';
