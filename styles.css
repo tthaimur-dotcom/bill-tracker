@@ -1,29 +1,29 @@
 :root {
-    --bg: #f8f9fb;
+    --bg: #f2f2f7;
     --bg-card: #ffffff;
-    --bg-input: #f1f3f5;
-    --text: #111827;
-    --text-secondary: #6b7280;
-    --primary: #4f46e5;
-    --primary-light: #eef2ff;
-    --success: #059669;
-    --danger: #dc2626;
-    --warning: #d97706;
-    --border: #e5e7eb;
-    --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
-    --radius: 12px;
+    --bg-input: #e8e8ed;
+    --text: #1c1c1e;
+    --text-secondary: #8e8e93;
+    --primary: #007aff;
+    --primary-light: #e8f0fe;
+    --success: #34c759;
+    --danger: #ff3b30;
+    --warning: #ff9500;
+    --border: #d1d1d6;
+    --shadow: 0 0.5px 0 rgba(0,0,0,0.04), 0 1px 3px rgba(0,0,0,0.06);
+    --radius: 13px;
 }
 
 [data-theme="dark"] {
-    --bg: #0f1117;
-    --bg-card: #1c1f2e;
-    --bg-input: #252836;
-    --text: #f1f5f9;
-    --text-secondary: #94a3b8;
-    --primary: #818cf8;
-    --primary-light: #1e1b4b;
-    --border: #2d3348;
-    --shadow: 0 1px 3px rgba(0,0,0,0.4);
+    --bg: #000000;
+    --bg-card: #1c1c1e;
+    --bg-input: #2c2c2e;
+    --text: #ffffff;
+    --text-secondary: #8e8e93;
+    --primary: #0a84ff;
+    --primary-light: #1c2a3f;
+    --border: #38383a;
+    --shadow: none;
 }
 
 * {
@@ -34,13 +34,13 @@
 }
 
 body {
-    font-family: 'Poppins', 'Segoe UI', sans-serif;
+    font-family: 'DM Sans', -apple-system, sans-serif;
     background: var(--bg);
     color: var(--text);
     min-height: 100vh;
     min-height: 100dvh;
     overflow-x: hidden;
-    letter-spacing: -0.01em;
+    -webkit-font-smoothing: antialiased;
 }
 
 #app {
@@ -62,9 +62,9 @@ body {
 }
 
 .screen-header h1 {
-    font-size: 1.3rem;
-    font-weight: 600;
-    letter-spacing: -0.02em;
+    font-size: 1.7rem;
+    font-weight: 700;
+    letter-spacing: -0.03em;
 }
 
 .screen-header .back-btn {
@@ -173,6 +173,7 @@ body {
 }
 
 .stat-card .stat-value {
+    font-family: 'JetBrains Mono', monospace;
     font-size: 1.3rem;
     font-weight: 700;
     margin-bottom: 2px;
@@ -185,7 +186,7 @@ body {
 }
 
 .stat-card.highlight {
-    background: linear-gradient(135deg, #4f46e5, #7c3aed);
+    background: var(--primary);
     color: #fff;
 }
 
@@ -248,7 +249,8 @@ body {
 }
 
 .supplier-amount .amount {
-    font-size: 1.1rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1.05rem;
     font-weight: 700;
     color: var(--danger);
 }
@@ -309,17 +311,17 @@ body {
 
 /* ===== BUTTONS ===== */
 .btn {
-    padding: 12px 22px;
+    padding: 13px 22px;
     border: none;
-    border-radius: 10px;
-    font-size: 0.9rem;
+    border-radius: 12px;
+    font-size: 0.95rem;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.15s ease;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 6px;
     width: 100%;
     letter-spacing: -0.01em;
 }
@@ -370,6 +372,52 @@ body {
 .btn-row .btn {
     flex: 1;
 }
+
+/* ===== COMPARE STRIP ===== */
+.compare-strip {
+    margin: 12px 16px;
+    background: var(--bg-card);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 12px 16px;
+    overflow: hidden;
+}
+
+.compare-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+}
+
+.compare-row + .compare-row {
+    border-top: 1px solid var(--border);
+}
+
+.compare-label {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.compare-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+}
+
+.compare-diff {
+    margin-top: 4px;
+    padding-top: 10px;
+    border-top: 2px solid var(--border);
+}
+
+.compare-diff.match .compare-label { color: var(--success); }
+.compare-diff.match .compare-value { color: var(--success); }
+.compare-diff.mismatch .compare-label { color: var(--danger); font-weight: 700; }
+.compare-diff.mismatch .compare-value { color: var(--danger); }
 
 /* ===== FAST ITEMS ENTRY ===== */
 .fast-items-section {
@@ -427,6 +475,7 @@ body {
 .fi-input.fi-qty,
 .fi-input.fi-rate,
 .fi-input.fi-amt {
+    font-family: 'JetBrains Mono', monospace;
     text-align: center;
     font-weight: 600;
     font-size: 0.9rem;
@@ -475,13 +524,15 @@ body {
 }
 
 .fi-total-val {
+    font-family: 'JetBrains Mono', monospace;
     font-weight: 700;
     font-size: 1.1rem;
     color: var(--success);
 }
 
 .form-input-lg {
-    font-size: 1.2rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1.3rem;
     font-weight: 700;
     text-align: center;
 }
@@ -768,8 +819,9 @@ body {
 }
 
 .bill-amount {
+    font-family: 'JetBrains Mono', monospace;
     font-weight: 700;
-    font-size: 1rem;
+    font-size: 0.95rem;
     flex-shrink: 0;
 }
 
@@ -833,6 +885,7 @@ body {
 }
 
 .ledger-amount {
+    font-family: 'JetBrains Mono', monospace;
     font-weight: 700;
 }
 

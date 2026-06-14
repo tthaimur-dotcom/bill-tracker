@@ -622,7 +622,7 @@ function renderAddBill() {
             </div>
             <div>
                 <label>Dealer Total</label>
-                <input class="form-input form-input-lg" type="number" id="written-total" value="${billState.writtenTotal}" placeholder="₹" inputmode="numeric" step="1" />
+                <input class="form-input form-input-lg" type="number" id="written-total" value="${billState.writtenTotal}" placeholder="₹" inputmode="decimal" step="1" />
             </div>
         </div>
 
@@ -664,18 +664,36 @@ function renderAddBill() {
                 <div class="fast-items-row" data-idx="${idx}">
                     <span class="fi-sl">${idx + 1}</span>
                     <input class="fi-input fi-item item-input" placeholder="Item ${idx + 1}" value="${item.name}" data-field="name" data-idx="${idx}" />
-                    <input class="fi-input fi-qty item-input" placeholder="—" type="number" inputmode="numeric" value="${item.qty}" data-field="qty" data-idx="${idx}" />
-                    <input class="fi-input fi-rate item-input" placeholder="—" type="number" inputmode="numeric" value="${item.rate}" data-field="rate" data-idx="${idx}" />
-                    <input class="fi-input fi-amt item-input" placeholder="${hasQtyRate ? itemTotal.toFixed(0) : '—'}" type="number" inputmode="numeric" value="${item.total || (hasQtyRate ? '' : '')}" data-field="total" data-idx="${idx}" ${hasQtyRate ? 'disabled' : ''} />
+                    <input class="fi-input fi-qty item-input" placeholder="—" type="number" inputmode="decimal" value="${item.qty}" data-field="qty" data-idx="${idx}" />
+                    <input class="fi-input fi-rate item-input" placeholder="—" type="number" inputmode="decimal" value="${item.rate}" data-field="rate" data-idx="${idx}" />
+                    <input class="fi-input fi-amt item-input" placeholder="${hasQtyRate ? itemTotal.toFixed(0) : '—'}" type="number" inputmode="decimal" value="${item.total || (hasQtyRate ? '' : '')}" data-field="total" data-idx="${idx}" ${hasQtyRate ? 'disabled' : ''} />
                 </div>`;
             }).join('')}
             <div class="fast-items-footer">
                 <button class="fi-add-btn" data-action="add-item">+</button>
                 <button class="fi-add-btn" data-action="add-5-items">+5</button>
                 <span class="fi-total-label">TOTAL</span>
-                <span class="fi-total-val" id="calc-total-display">₹${calcTotal > 0 ? calcTotal.toLocaleString('en-IN') : '0'}</span>
+                <span class="fi-total-val" id="calc-total-display">${calcTotal > 0 ? calcTotal.toLocaleString('en-IN') : '0'}</span>
             </div>
         </div>
+
+        <!-- Comparison Strip -->
+        ${(calcTotal > 0 || writtenTotal > 0) ? `
+        <div class="compare-strip">
+            <div class="compare-row">
+                <span class="compare-label">Your Items</span>
+                <span class="compare-value" id="compare-calc">${calcTotal > 0 ? calcTotal.toLocaleString('en-IN') : '—'}</span>
+            </div>
+            <div class="compare-row">
+                <span class="compare-label">Dealer's Slip</span>
+                <span class="compare-value">${writtenTotal > 0 ? writtenTotal.toLocaleString('en-IN') : '—'}</span>
+            </div>
+            ${(calcTotal > 0 && writtenTotal > 0) ? `
+            <div class="compare-row compare-diff ${Math.abs(calcTotal - writtenTotal) < 0.5 ? 'match' : 'mismatch'}">
+                <span class="compare-label">${Math.abs(calcTotal - writtenTotal) < 0.5 ? 'MATCH' : 'DIFFERENCE'}</span>
+                <span class="compare-value">${Math.abs(calcTotal - writtenTotal) < 0.5 ? '0' : (calcTotal - writtenTotal > 0 ? '+' : '') + Math.round(calcTotal - writtenTotal).toLocaleString('en-IN')}</span>
+            </div>` : ''}
+        </div>` : ''}
 
         <div class="form-group" style="margin-top:8px;">
             <label>Bill No. (optional)</label>
@@ -683,7 +701,7 @@ function renderAddBill() {
         </div>
 
         <div class="btn-row mt-16" style="margin-bottom:20px;">
-            <button class="btn btn-primary" data-action="save-bill">💾 ${billState.editingBillId ? 'Update' : 'Save Bill'}</button>
+            <button class="btn btn-primary" data-action="save-bill">${billState.editingBillId ? 'Update Bill' : 'Save Bill'}</button>
         </div>
     `;
 }
@@ -692,7 +710,7 @@ function calcItemTotal(item) {
     const qty = parseFloat(item.qty) || 0;
     const rate = parseFloat(item.rate) || 0;
     const manualTotal = parseFloat(item.total) || 0;
-    if (qty && rate) return qty * rate;
+    if (qty && rate) return Math.round(qty * rate * 100) / 100;
     if (manualTotal) return manualTotal;
     return 0;
 }
@@ -1732,7 +1750,7 @@ function buildBillText(bill, sup) {
         t += `Your total  : Rs.${bill.writtenTotal.toFixed(2)}${NL}`;
         t += `Our total   : Rs.${bill.calculatedTotal.toFixed(2)}${NL}`;
         t += `Difference  : Rs.${Math.abs(diff).toFixed(2)} (${diff > 0 ? 'Excess' : 'Short'})${NL}`;
-        t += `${NL}Please verify and confirm.${NL}`;
+        t += `${NL}Sir, please check once. There is a small${NL}difference in the bill total.${NL}Kindly verify and confirm.${NL}Thank you.${NL}`;
     } else {
         t += `${NL}✓ Total verified. Balance: ${fmt(getBalance(bill.supplierId))}${NL}`;
     }
@@ -1977,9 +1995,48 @@ function renderReceiptBody(ctx, W, pad, LH, y, bill, sup, S, contentW, canvas) {
 
     drawLine(false);
 
-    // Items - clean, no dashes between
+    // Items - clean, no dashes between. Highlight error item in red.
+    var mismatchItemIdx = -1;
+    if (bill.hasMismatch) {
+        // Find the item where rounding causes the difference
+        var runningSum = 0;
+        var dealerTotal = bill.writtenTotal || 0;
+        for (var fi = 0; fi < bill.items.length; fi++) {
+            runningSum += bill.items[fi].calculatedTotal;
+        }
+        var totalDiff = runningSum - dealerTotal;
+        // Check if one item's rounding explains the difference
+        for (var fi2 = 0; fi2 < bill.items.length; fi2++) {
+            var itm = bill.items[fi2];
+            if (itm.qty && itm.rate) {
+                var exact = itm.qty * itm.rate;
+                var rounded = Math.round(exact);
+                if (Math.abs(rounded - itm.calculatedTotal) > 0 || Math.abs(itm.calculatedTotal - exact) > 0.01) {
+                    mismatchItemIdx = fi2; break;
+                }
+            }
+            // Or if removing this item's total makes the rest match dealer total
+            if (Math.abs((runningSum - itm.calculatedTotal) - dealerTotal) < 1) {
+                mismatchItemIdx = fi2; break;
+            }
+        }
+        // If no specific item found, mark the last one (likely where rounding accumulates)
+        if (mismatchItemIdx === -1 && Math.abs(totalDiff) > 0 && Math.abs(totalDiff) <= bill.items.length) {
+            mismatchItemIdx = bill.items.length - 1;
+        }
+    }
+
     bill.items.forEach(function(item, i) {
-        setFont(F, false); ctx.fillStyle = '#111';
+        var isError = (i === mismatchItemIdx);
+        if (isError) {
+            // Red background highlight
+            ctx.fillStyle = '#fff0f0';
+            ctx.fillRect(pad - 4 * S, y - LH * 0.7, W - pad * 2 + 8 * S, LH);
+            ctx.fillStyle = '#cc0000';
+        } else {
+            ctx.fillStyle = '#111';
+        }
+        setFont(F, false);
         var sl = String(i + 1);
         var name = (item.name || 'ITEM ' + (i + 1)).toUpperCase();
         if (name.length > 20) name = name.substring(0, 19) + '..';
@@ -1990,6 +2047,19 @@ function renderReceiptBody(ctx, W, pad, LH, y, bill, sup, S, contentW, canvas) {
         setFont(F, true);
         var as2 = String(Math.round(item.calculatedTotal));
         ctx.fillText(as2, amtX - ctx.measureText(as2).width, y);
+        if (isError) {
+            // Draw red underline
+            ctx.beginPath();
+            ctx.moveTo(amtX - ctx.measureText(as2).width - 4*S, y + 4*S);
+            ctx.lineTo(amtX + 4*S, y + 4*S);
+            ctx.strokeStyle = '#cc0000';
+            ctx.lineWidth = 2 * S;
+            ctx.stroke();
+            // Arrow mark
+            ctx.fillStyle = '#cc0000';
+            setFont(FS, true);
+            ctx.fillText('<-- check', amtX + 8*S, y);
+        }
         y += LH;
     });
 
@@ -2022,7 +2092,11 @@ function renderReceiptBody(ctx, W, pad, LH, y, bill, sup, S, contentW, canvas) {
         setFont(FS, false); ctx.fillStyle = '#333';
         ctx.fillText('Dealer: Rs.' + Math.round(bill.writtenTotal) + '  |  Calc: Rs.' + Math.round(bill.calculatedTotal), pad, y);
         y += LH;
-        ctx.fillText('Please verify the correct amount.', pad, y);
+        ctx.fillText('Please check once, there is a small', pad, y);
+        y += LH;
+        ctx.fillText('difference in the total. Kindly verify.', pad, y);
+        y += LH;
+        ctx.fillText('Thank you.', pad, y);
         y += LH;
     }
 
