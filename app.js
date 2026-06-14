@@ -349,7 +349,7 @@ function renderDashboard() {
     const billCount = appData.bills.length;
     const discCount = appData.discrepancies.length;
 
-    const recentBills = [...appData.bills].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5);
+    const recentBills = [...appData.bills].sort((a, b) => new Date(a.date) - new Date(b.date));
 
     return `
         <div class="screen-header">
@@ -530,7 +530,7 @@ function renderSupplierDetail() {
         <div class="section-title">Ledger (Running Balance)</div>
         ${ledger.length === 0 ? '<div class="empty-state"><p>No transactions yet</p></div>' :
             `<div class="card" style="padding:8px 12px;">
-                ${ledger.reverse().map(entry => `
+                ${ledger.map(entry => `
                     <div class="ledger-entry" ${entry.type === 'bill' ? `data-action="view-bill" data-id="${entry.id}"` : ''}>
                         <div class="ledger-dot ${entry.type}"></div>
                         <div class="ledger-info">
@@ -777,7 +777,7 @@ function renderBillDetail() {
 
 // ===== HISTORY =====
 function renderHistory() {
-    const bills = [...appData.bills].sort((a, b) => new Date(b.date) - new Date(a.date));
+    const bills = [...appData.bills].sort((a, b) => new Date(a.date) - new Date(b.date));
 
     return `
         <div class="screen-header">
@@ -843,7 +843,7 @@ function renderHistoryList(bills) {
 
 // ===== DISCREPANCY LOG =====
 function renderDiscrepancies() {
-    const discBills = appData.bills.filter(b => b.hasMismatch).sort((a, b) => new Date(b.date) - new Date(a.date));
+    const discBills = appData.bills.filter(b => b.hasMismatch).sort((a, b) => new Date(a.date) - new Date(b.date));
 
     return `
         <div class="screen-header">
@@ -2104,7 +2104,7 @@ function handleSearch() {
             return supName.includes(query) || itemNames.includes(query) || (b.billNumber || '').toLowerCase().includes(query);
         });
     }
-    bills.sort((a, b) => new Date(b.date) - new Date(a.date));
+    bills.sort((a, b) => new Date(a.date) - new Date(b.date));
     const container = document.getElementById('history-container');
     if (container) {
         container.innerHTML = renderHistoryList(bills);
