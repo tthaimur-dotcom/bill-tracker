@@ -1918,18 +1918,20 @@ function buildStatementText(supplierId) {
 // ===== SHARE AS IMAGE (receipt style) =====
 
 // ===== SHARE AS IMAGE (receipt style - clean) =====
+
+// ===== SHARE AS IMAGE (clean minimal style) =====
 function shareCardAsImage(billId) {
     var bill = appData.bills.find(function(b) { return b.id === billId; });
     if (!bill) return;
     var sup = appData.suppliers.find(function(s) { return s.id === bill.supplierId; });
     var S = 2;
-    var W = 800 * S;
-    var pad = 50 * S;
-    var LH = 28 * S;
-    var contentW = W - pad * 2;
-    var lines = 14 + bill.items.length + (bill.hasMismatch ? 4 : 0);
-    if (bill.photo) lines += 14;
-    var H = lines * LH + pad * 2;
+    var W = 750 * S;
+    var pad = 44 * S;
+    var LH = 32 * S;
+    var itemCount = bill.items.length;
+    var lines = 7 + itemCount + (bill.hasMismatch ? 5 : 0);
+    if (bill.photo) lines += 12;
+    var H = lines * LH + pad * 3;
     var canvas = document.createElement('canvas');
     canvas.width = W; canvas.height = H;
     var ctx = canvas.getContext('2d');
@@ -1938,179 +1940,119 @@ function shareCardAsImage(billId) {
     if (bill.photo) {
         var img = new Image();
         img.onload = function() {
-            var maxPH = 12 * LH;
-            var ratio = Math.min(contentW / img.width, maxPH / img.height);
+            var maxPH = 10 * LH;
+            var ratio = Math.min((W - pad * 2) / img.width, maxPH / img.height);
             var dw = img.width * ratio, dh = img.height * ratio;
             ctx.drawImage(img, (W - dw) / 2, y, dw, dh);
             y += dh + LH;
-            renderReceiptBody(ctx, W, pad, LH, y, bill, sup, S, contentW, canvas);
+            drawCleanBill(ctx, W, pad, LH, y, bill, sup, S, canvas);
         };
         img.src = bill.photo;
     } else {
-        renderReceiptBody(ctx, W, pad, LH, y, bill, sup, S, contentW, canvas);
+        drawCleanBill(ctx, W, pad, LH, y, bill, sup, S, canvas);
     }
 }
 
-function renderReceiptBody(ctx, W, pad, LH, y, bill, sup, S, contentW, canvas) {
+function drawCleanBill(ctx, W, pad, LH, y, bill, sup, S, canvas) {
     var supName = sup ? sup.name.toUpperCase() : 'UNKNOWN';
-    var billDate = fmtDate(bill.date);
-    var time = new Date().toLocaleTimeString('en-IN', {hour:'2-digit',minute:'2-digit',hour12:true}).toUpperCase();
-    var F = 15 * S;
-    var FS = 13 * S;
     var amtX = W - pad;
-    var qtyX = W - pad - 150 * S;
 
-    function setFont(size, bold) { ctx.font = (bold ? 'bold ' : '') + size + 'px "Courier New", monospace'; }
-    function drawLine(thick) { ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(W - pad, y); ctx.strokeStyle = '#000'; ctx.lineWidth = (thick ? 2.5 : 1) * S; ctx.stroke(); y += LH * 0.6; }
+    // === HEADER ===
+    ctx.font = 'bold ' + (22*S) + 'px "Courier New", monospace';
+    ctx.fillStyle = '#1c1c1e';
+    ctx.fillText(supName, pad, y);
+    y += LH * 0.9;
 
-    // TITLE centered
-    setFont(18 * S, true); ctx.fillStyle = '#111';
-    var title = 'BILL';
-    ctx.fillText(title, (W - ctx.measureText(title).width) / 2, y);
-    y += LH * 1.5;
+    ctx.font = (13*S) + 'px "Courier New", monospace';
+    ctx.fillStyle = '#8e8e93';
+    ctx.fillText(fmtDate(bill.date) + (bill.billNumber ? '  |  #' + bill.billNumber : ''), pad, y);
+    y += LH * 1.2;
 
-    // Header row 1
-    setFont(F, false); ctx.fillStyle = '#111';
-    ctx.fillText('Bill No  : ' + (bill.billNumber || '-'), pad, y);
-    var dt = 'Date: ' + billDate;
-    ctx.fillText(dt, W - pad - ctx.measureText(dt).width, y);
-    y += LH;
+    // === THIN LINE after header ===
+    ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(W - pad, y);
+    ctx.strokeStyle = '#e5e5ea'; ctx.lineWidth = 1 * S; ctx.stroke();
+    y += LH * 0.7;
 
-    // Header row 2
-    ctx.fillText('Customer : ' + supName, pad, y);
-    var tt = 'Time: ' + time;
-    ctx.fillText(tt, W - pad - ctx.measureText(tt).width, y);
-    y += LH;
-
-    drawLine(true);
-
-    // Column header
-    setFont(F, true); ctx.fillStyle = '#111';
-    ctx.fillText('Sl', pad, y);
-    ctx.fillText('Item Name', pad + 40 * S, y);
-    ctx.fillText('Qty', qtyX, y);
-    var al = 'Amount';
-    ctx.fillText(al, amtX - ctx.measureText(al).width, y);
-    y += LH;
-
-    drawLine(false);
-
-    // Items - clean, no dashes between. Highlight error item in red.
-    var mismatchItemIdx = -1;
-    if (bill.hasMismatch) {
-        // Find the item where rounding causes the difference
-        var runningSum = 0;
-        var dealerTotal = bill.writtenTotal || 0;
-        for (var fi = 0; fi < bill.items.length; fi++) {
-            runningSum += bill.items[fi].calculatedTotal;
-        }
-        var totalDiff = runningSum - dealerTotal;
-        // Check if one item's rounding explains the difference
-        for (var fi2 = 0; fi2 < bill.items.length; fi2++) {
-            var itm = bill.items[fi2];
-            if (itm.qty && itm.rate) {
-                var exact = itm.qty * itm.rate;
-                var rounded = Math.round(exact);
-                if (Math.abs(rounded - itm.calculatedTotal) > 0 || Math.abs(itm.calculatedTotal - exact) > 0.01) {
-                    mismatchItemIdx = fi2; break;
-                }
-            }
-            // Or if removing this item's total makes the rest match dealer total
-            if (Math.abs((runningSum - itm.calculatedTotal) - dealerTotal) < 1) {
-                mismatchItemIdx = fi2; break;
-            }
-        }
-        // If no specific item found, mark the last one (likely where rounding accumulates)
-        if (mismatchItemIdx === -1 && Math.abs(totalDiff) > 0 && Math.abs(totalDiff) <= bill.items.length) {
-            mismatchItemIdx = bill.items.length - 1;
-        }
-    }
-
+    // === ITEMS (clean: name left, qty x rate middle, amount right) ===
     bill.items.forEach(function(item, i) {
-        var isError = (i === mismatchItemIdx);
-        if (isError) {
-            // Red background highlight
-            ctx.fillStyle = '#fff0f0';
-            ctx.fillRect(pad - 4 * S, y - LH * 0.7, W - pad * 2 + 8 * S, LH);
-            ctx.fillStyle = '#cc0000';
-        } else {
-            ctx.fillStyle = '#111';
-        }
-        setFont(F, false);
-        var sl = String(i + 1);
-        var name = (item.name || 'ITEM ' + (i + 1)).toUpperCase();
-        if (name.length > 20) name = name.substring(0, 19) + '..';
-        ctx.fillText(sl, pad + (sl.length === 1 ? 6 * S : 0), y);
-        ctx.fillText(name, pad + 40 * S, y);
-        var qs = String(item.qty || '');
-        ctx.fillText(qs, qtyX + 30 * S - ctx.measureText(qs).width, y);
-        setFont(F, true);
-        var as2 = String(Math.round(item.calculatedTotal));
-        ctx.fillText(as2, amtX - ctx.measureText(as2).width, y);
-        if (isError) {
-            // Draw red underline
-            ctx.beginPath();
-            ctx.moveTo(amtX - ctx.measureText(as2).width - 4*S, y + 4*S);
-            ctx.lineTo(amtX + 4*S, y + 4*S);
-            ctx.strokeStyle = '#cc0000';
-            ctx.lineWidth = 2 * S;
-            ctx.stroke();
-            // Arrow mark
-            ctx.fillStyle = '#cc0000';
-            setFont(FS, true);
-            ctx.fillText('<-- check', amtX + 8*S, y);
-        }
+        var name = item.name || 'Item ' + (i + 1);
+
+        // Item name
+        ctx.font = (15*S) + 'px "Courier New", monospace';
+        ctx.fillStyle = '#1c1c1e';
+        ctx.fillText(name, pad, y);
+
+        // Qty x Rate (middle, grey)
+        var detail = '';
+        if (item.qty && item.rate) detail = item.qty + ' x \u20B9' + item.rate;
+        else if (item.qty) detail = 'Qty: ' + item.qty;
+        ctx.font = (13*S) + 'px "Courier New", monospace';
+        ctx.fillStyle = '#8e8e93';
+        var detailX = pad + (W - pad*2) * 0.42;
+        ctx.fillText(detail, detailX, y);
+
+        // Amount (right, bold)
+        ctx.font = 'bold ' + (15*S) + 'px "Courier New", monospace';
+        ctx.fillStyle = '#1c1c1e';
+        var amt = '\u20B9' + Math.round(item.calculatedTotal).toLocaleString('en-IN');
+        var aw = ctx.measureText(amt).width;
+        ctx.fillText(amt, amtX - aw, y);
+
         y += LH;
     });
 
-    drawLine(false);
+    // === LINE before total ===
+    y += LH * 0.3;
+    ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(W - pad, y);
+    ctx.strokeStyle = '#e5e5ea'; ctx.lineWidth = 1 * S; ctx.stroke();
+    y += LH * 0.9;
 
-    // NET TOTAL
-    setFont(16 * S, true); ctx.fillStyle = '#111';
-    var totalStr = String(Math.round(bill.calculatedTotal));
-    var netLbl = 'NET TOTAL :';
-    var nlw = ctx.measureText(netLbl).width;
-    var tvw = ctx.measureText(totalStr).width;
-    ctx.fillText(netLbl, amtX - tvw - nlw - 16 * S, y);
-    ctx.fillText(totalStr, amtX - tvw, y);
-    y += LH;
+    // === TOTAL ===
+    ctx.font = 'bold ' + (17*S) + 'px "Courier New", monospace';
+    ctx.fillStyle = '#34c759';
+    ctx.fillText('TOTAL', pad, y);
+    var totalAmt = '\u20B9' + bill.calculatedTotal.toFixed(2);
+    var tw = ctx.measureText(totalAmt).width;
+    ctx.fillText(totalAmt, amtX - tw, y);
+    y += LH * 1.3;
 
-    drawLine(true);
-
-    // Amount in words
-    setFont(FS, true); ctx.fillStyle = '#111';
-    ctx.fillText('Amount: Rupees ' + numberToWords(Math.round(bill.calculatedTotal)) + ' Only', pad, y);
-    y += LH;
-
-    // Mismatch
+    // === MISMATCH BOX ===
     if (bill.hasMismatch) {
-    drawLine(false);
         var diff = bill.calculatedTotal - bill.writtenTotal;
-        setFont(F, true); ctx.fillStyle = '#cc0000';
-        ctx.fillText('MISMATCH: ' + (diff > 0 ? 'EXCESS' : 'SHORT') + ' Rs.' + Math.abs(Math.round(diff)), pad, y);
+        var boxH = 4.2 * LH;
+
+        // Pink background box
+        ctx.fillStyle = '#fff5f5';
+        ctx.fillRect(pad - 8*S, y - 8*S, W - pad*2 + 16*S, boxH);
+        // Left red bar
+        ctx.fillStyle = '#ff3b30';
+        ctx.fillRect(pad - 8*S, y - 8*S, 4*S, boxH);
+
+        y += LH * 0.5;
+
+        // SHORT BY / EXCESS BY
+        ctx.font = 'bold ' + (16*S) + 'px "Courier New", monospace';
+        ctx.fillStyle = '#ff3b30';
+        ctx.fillText((diff > 0 ? '\u26A0 EXCESS BY \u20B9' : '\u26A0 SHORT BY \u20B9') + Math.abs(Math.round(diff)).toLocaleString('en-IN'), pad + 10*S, y);
         y += LH;
-        setFont(FS, false); ctx.fillStyle = '#333';
-        ctx.fillText('Dealer: Rs.' + Math.round(bill.writtenTotal) + '  |  Calc: Rs.' + Math.round(bill.calculatedTotal), pad, y);
+
+        // Dealer vs calc
+        ctx.font = (12*S) + 'px "Courier New", monospace';
+        ctx.fillStyle = '#666';
+        ctx.fillText("Dealer's total: \u20B9" + Math.round(bill.writtenTotal).toLocaleString('en-IN') + '  |  Calculated: \u20B9' + Math.round(bill.calculatedTotal).toLocaleString('en-IN'), pad + 10*S, y);
         y += LH;
-        ctx.fillText('Please check once, there is a small', pad, y);
-        y += LH;
-        ctx.fillText('difference in the total. Kindly verify.', pad, y);
-        y += LH;
-        ctx.fillText('Thank you.', pad, y);
+
+        // Polite note
+        ctx.font = 'italic ' + (12*S) + 'px "Courier New", monospace';
+        ctx.fillStyle = '#888';
+        ctx.fillText('Sir, please check once. Small difference in total.', pad + 10*S, y);
+        y += LH * 0.7;
+        ctx.fillText('Kindly verify. Thank you.', pad + 10*S, y);
         y += LH;
     }
 
-    drawLine(true);
-
-    // Footer
-    setFont(FS, false); ctx.fillStyle = '#111';
-    ctx.fillText('For Reference Only', pad, y);
-    var pg = 'Page:1';
-    ctx.fillText(pg, W - pad - ctx.measureText(pg).width, y);
-    y += LH;
-
-    // Export cropped
-    var fH = y + pad / 2;
+    // === EXPORT ===
+    var fH = y + pad;
     var fc = document.createElement('canvas');
     fc.width = W; fc.height = fH;
     var fctx = fc.getContext('2d');
@@ -2562,7 +2504,7 @@ function generatePDFLedger(supId, monthStr) {
     ctx.fillRect(0, 0, W, H);
     var y = pad;
 
-    function setF(size, bold) { ctx.font = (bold ? 'bold ' : '') + size + 'px "Courier New",monospace'; }
+    function setF(size, bold) { ctx.font = (bold ? 'bold ' : '') + size + 'px "Courier New", monospace'; }
     function drawL(thick) { ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(W - pad, y); ctx.strokeStyle = '#000'; ctx.lineWidth = (thick ? 2.5 : 1) * S; ctx.stroke(); y += LH * 0.5; }
 
     function txt(t, bold, color) {
