@@ -676,8 +676,9 @@ function renderAddBill() {
             <div class="fast-items-footer">
                 <button class="fi-add-btn" data-action="add-item">+</button>
                 <button class="fi-add-btn" data-action="add-5-items">+5</button>
+                <button class="fi-add-btn fi-next-btn" data-action="next-field">Next</button>
                 <span class="fi-total-label">TOTAL</span>
-                <span class="fi-total-val" id="calc-total-display">${calcTotal > 0 ? calcTotal.toLocaleString('en-IN') : '0'}</span>
+                <span class="fi-total-val" id="calc-total-display">${finalTotal > 0 ? finalTotal.toLocaleString('en-IN') : '0'}</span>
             </div>
         </div>
 
@@ -713,8 +714,12 @@ function renderAddBill() {
         </div>
 
         <div class="form-group">
-            <label>Adjustment (prev bill correction, - to reduce)</label>
-            <input class="form-input" type="number" inputmode="decimal" id="bill-adjustment" value="${billState.adjustment || ''}" placeholder="e.g. -1000 if dealer reduced from last bill" step="0.01" />
+            <label>Adjustment (prev bill correction)</label>
+            <div style="display:flex;gap:8px;align-items:center;">
+                <button class="adj-sign-btn" data-action="toggle-adj-sign" id="adj-sign-btn">${(parseFloat(billState.adjustment) || 0) < 0 ? '−' : '+'}</button>
+                <input class="form-input" type="number" inputmode="decimal" id="bill-adjustment" value="${Math.abs(parseFloat(billState.adjustment) || 0) || ''}" placeholder="0" step="1" style="flex:1" />
+            </div>
+            <p class="fs-sm" style="color:var(--text-secondary);margin-top:4px;">Tap +/− to switch. Negative = dealer reduced this bill</p>
         </div>
 
         <div class="btn-row mt-16" style="margin-bottom:20px;">
@@ -1246,6 +1251,35 @@ function attachEventListeners() {
         }
     }
 
+    // Move focus: qty → rate → amt → next row qty
+    function moveToNextField() {
+        const focused = document.activeElement;
+        if (!focused || !focused.classList.contains('fi-input')) {
+            // Nothing focused — focus first qty
+            const first = document.querySelector('.fast-items-row[data-idx="0"] .fi-qty');
+            if (first) first.focus();
+            return;
+        }
+        const row = focused.closest('.fast-items-row');
+        if (!row) return;
+        const idx = parseInt(row.dataset.idx);
+
+        if (focused.classList.contains('fi-item')) {
+            row.querySelector('.fi-qty')?.focus();
+        } else if (focused.classList.contains('fi-qty')) {
+            row.querySelector('.fi-rate')?.focus();
+        } else if (focused.classList.contains('fi-rate')) {
+            const amtField = row.querySelector('.fi-amt');
+            if (amtField && !amtField.disabled) {
+                amtField.focus();
+            } else {
+                goNextRow(idx);
+            }
+        } else if (focused.classList.contains('fi-amt')) {
+            goNextRow(idx);
+        }
+    }
+
     const supSelect = document.getElementById('bill-supplier');
     if (supSelect) {
         supSelect.addEventListener('change', (e) => {
@@ -1264,8 +1298,17 @@ function attachEventListeners() {
         updateLiveTracker();
     });
     const adjInp = document.getElementById('bill-adjustment');
+    const adjSignBtn = document.getElementById('adj-sign-btn');
     if (adjInp) adjInp.addEventListener('input', e => {
-        billState.adjustment = e.target.value;
+        var val = parseFloat(e.target.value) || 0;
+        var sign = (adjSignBtn && adjSignBtn.textContent.trim() === '−') ? -1 : 1;
+        billState.adjustment = String(val * sign);
+        updateLiveTracker();
+    });
+    if (adjSignBtn) adjSignBtn.addEventListener('click', function() {
+        var current = parseFloat(billState.adjustment) || 0;
+        billState.adjustment = String(-current);
+        adjSignBtn.textContent = current >= 0 ? '−' : '+';
         updateLiveTracker();
     });
 
@@ -1403,6 +1446,10 @@ function handleAction(action, dataset) {
         case 'add-5-items':
             for (let i = 0; i < 5; i++) billState.items.push({ name: '', qty: '', unit: 'pcs', rate: '', total: '' });
             navigate('add-bill');
+            break;
+
+        case 'next-field':
+            moveToNextField();
             break;
 
         case 'remove-item':

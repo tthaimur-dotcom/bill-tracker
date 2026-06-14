@@ -514,6 +514,35 @@ body {
     background: var(--primary-light);
 }
 
+.fi-next-btn {
+    width: auto;
+    padding: 0 12px;
+    font-size: 0.8rem;
+    color: var(--success);
+    border-color: var(--success);
+}
+
+/* Adjustment sign toggle button */
+.adj-sign-btn {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    border: 2px solid var(--border);
+    background: var(--bg-card);
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--primary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.adj-sign-btn:active {
+    background: var(--primary-light);
+}
+
 .fi-total-label {
     text-align: right;
     font-size: 0.75rem;
