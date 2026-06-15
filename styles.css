@@ -1172,6 +1172,77 @@ body {
     font-size: 1rem;
 }
 
+/* Search results dropdown */
+.search-results {
+    margin: -8px 16px 12px;
+    background: var(--bg-card);
+    border-radius: 0 0 12px 12px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.search-result-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+}
+
+.search-result-item:active { background: var(--bg-input); }
+.search-result-item:last-child { border-bottom: none; }
+
+.sr-info { flex: 1; }
+.sr-title { font-size: 0.9rem; font-weight: 600; }
+.sr-sub { font-size: 0.75rem; color: var(--text-secondary); }
+.sr-amt { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 0.9rem; }
+.search-no-result { padding: 16px; text-align: center; color: var(--text-secondary); font-size: 0.85rem; }
+
+/* Payment History */
+.pay-hist-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.pay-hist-row:last-child { border-bottom: none; }
+
+.pay-hist-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.pay-hist-date {
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.pay-hist-mode {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+}
+
+.pay-hist-amt {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: var(--success);
+}
+
+.pay-hist-total {
+    border-top: 2px solid var(--border);
+    margin-top: 4px;
+    padding-top: 10px;
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
 /* ===== EMPTY STATE ===== */
 .empty-state {
     text-align: center;

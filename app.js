@@ -385,6 +385,11 @@ function renderDashboard() {
             </div>
         </div>
 
+        <!-- Global Search -->
+        <div class="search-bar">
+            <input id="global-search" placeholder="Search bills, suppliers, amounts..." />
+        </div>
+
         ${todayBills.length > 0 ? `
         <div class="today-strip">
             Today: ${todayBills.length} bill${todayBills.length > 1 ? 's' : ''} · ${fmtShort(todayTotal)}
@@ -602,6 +607,26 @@ function renderSupplierDetail() {
                 `).join('')}
             </div>`
         }
+
+        <!-- Payment History -->
+        ${appData.payments.filter(p => p.supplierId === sup.id).length > 0 ? `
+        <div class="section-title">Payment History</div>
+        <div class="card" style="padding:8px 12px;">
+            ${appData.payments.filter(p => p.supplierId === sup.id).sort((a, b) => new Date(a.date) - new Date(b.date)).map(p => `
+                <div class="pay-hist-row">
+                    <div class="pay-hist-info">
+                        <span class="pay-hist-date">${fmtDate(p.date)}</span>
+                        <span class="pay-hist-mode">${p.note || 'Payment'}</span>
+                    </div>
+                    <span class="pay-hist-amt">${fmtShort(p.amount)}</span>
+                </div>
+            `).join('')}
+            <div class="pay-hist-row pay-hist-total">
+                <span>Total Paid</span>
+                <span class="pay-hist-amt">${fmtShort(appData.payments.filter(p => p.supplierId === sup.id).reduce((s, p) => s + p.amount, 0))}</span>
+            </div>
+        </div>
+        ` : ''}
     `;
 }
 
@@ -1409,6 +1434,55 @@ function attachEventListeners() {
 
     const importFile = document.getElementById('import-file');
     if (importFile) importFile.addEventListener('change', handleImport);
+
+    // Global search on dashboard
+    const globalSearch = document.getElementById('global-search');
+    if (globalSearch) {
+        globalSearch.addEventListener('input', function(e) {
+            var q = e.target.value.toLowerCase().trim();
+            var resultsDiv = document.getElementById('search-results');
+            if (!q) { if (resultsDiv) resultsDiv.remove(); return; }
+
+            var results = [];
+            // Search bills
+            appData.bills.forEach(function(b) {
+                var sup = appData.suppliers.find(function(s) { return s.id === b.supplierId; });
+                var supName = sup ? sup.name.toLowerCase() : '';
+                var items = b.items.map(function(i) { return (i.name || '').toLowerCase(); }).join(' ');
+                var amt = String(b.calculatedTotal);
+                var billNum = (b.billNumber || '').toLowerCase();
+                if (supName.includes(q) || items.includes(q) || amt.includes(q) || billNum.includes(q) || (b.date || '').includes(q)) {
+                    results.push({ type: 'bill', id: b.id, title: (sup ? sup.name : '?') + (b.billNumber ? ' #' + b.billNumber : ''), sub: fmtDateShort(b.date) + ' · ' + b.items.length + ' items', amt: b.calculatedTotal });
+                }
+            });
+            // Search suppliers
+            appData.suppliers.forEach(function(s) {
+                if (s.name.toLowerCase().includes(q)) {
+                    results.push({ type: 'supplier', id: s.id, title: s.name, sub: 'Supplier', amt: getBalance(s.id) });
+                }
+            });
+
+            if (!resultsDiv) {
+                resultsDiv = document.createElement('div');
+                resultsDiv.id = 'search-results';
+                resultsDiv.className = 'search-results';
+                globalSearch.parentElement.after(resultsDiv);
+            }
+            if (results.length === 0) {
+                resultsDiv.innerHTML = '<div class="search-no-result">No results</div>';
+            } else {
+                resultsDiv.innerHTML = results.slice(0, 10).map(function(r) {
+                    return '<div class="search-result-item" data-action="' + (r.type === 'bill' ? 'view-bill' : 'view-supplier') + '" data-id="' + r.id + '">' +
+                        '<div class="sr-info"><div class="sr-title">' + r.title + '</div><div class="sr-sub">' + r.sub + '</div></div>' +
+                        '<div class="sr-amt">' + fmtShort(r.amt) + '</div></div>';
+                }).join('');
+                // Attach click events
+                resultsDiv.querySelectorAll('[data-action]').forEach(function(el) {
+                    el.addEventListener('click', function() { handleAction(el.dataset.action, el.dataset); });
+                });
+            }
+        });
+    }
 }
 
 function updateLiveTracker() {
