@@ -65,6 +65,18 @@ function saveData() {
     saveToIDB(appData);
 }
 
+// Auto-save draft bill
+const DRAFT_KEY = 'billTrackerDraft';
+function saveDraft() {
+    if (billState.supplierId || billState.items.some(function(i) { return i.qty || i.rate || i.total; })) {
+        localStorage.setItem(DRAFT_KEY, JSON.stringify(billState));
+    }
+}
+function loadDraft() {
+    try { var d = localStorage.getItem(DRAFT_KEY); return d ? JSON.parse(d) : null; } catch(e) { return null; }
+}
+function clearDraft() { localStorage.removeItem(DRAFT_KEY); }
+
 // On startup: if localStorage is empty but IndexedDB has data, restore it
 function initDataRecovery() {
     var lsData = localStorage.getItem(DB_KEY);
@@ -349,6 +361,20 @@ function renderDashboard() {
     const billCount = appData.bills.length;
     const discCount = appData.discrepancies.length;
 
+    // Today's bills
+    const today = new Date().toISOString().split('T')[0];
+    const todayBills = appData.bills.filter(b => b.date === today);
+    const todayTotal = todayBills.reduce((s, b) => s + b.calculatedTotal, 0);
+
+    // Monthly comparison
+    const now = new Date();
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+    const lastMonthTotal = appData.bills
+        .filter(b => { var d = new Date(b.date); return d >= lastMonthStart && d <= lastMonthEnd; })
+        .reduce((s, b) => s + b.calculatedTotal, 0);
+    const monthDiff = lastMonthTotal > 0 ? Math.round(((monthTotal - lastMonthTotal) / lastMonthTotal) * 100) : 0;
+
     const recentBills = [...appData.bills].sort((a, b) => new Date(a.date) - new Date(b.date));
 
     return `
@@ -359,6 +385,11 @@ function renderDashboard() {
             </div>
         </div>
 
+        ${todayBills.length > 0 ? `
+        <div class="today-strip">
+            Today: ${todayBills.length} bill${todayBills.length > 1 ? 's' : ''} · ${fmtShort(todayTotal)}
+        </div>` : ''}
+
         <div class="stats-grid">
             <div class="stat-card highlight">
                 <div class="stat-value">${fmtShort(totalDue)}</div>
@@ -366,7 +397,7 @@ function renderDashboard() {
             </div>
             <div class="stat-card">
                 <div class="stat-value">${fmtShort(monthTotal)}</div>
-                <div class="stat-label">This Month</div>
+                <div class="stat-label">This Month ${monthDiff !== 0 ? '<span style="font-size:0.7rem;color:' + (monthDiff > 0 ? 'var(--danger)' : 'var(--success)') + '">' + (monthDiff > 0 ? '↑' : '↓') + Math.abs(monthDiff) + '%</span>' : ''}</div>
             </div>
             <div class="stat-card">
                 <div class="stat-value">${billCount}</div>
@@ -381,6 +412,24 @@ function renderDashboard() {
         ${discCount > 0 ? `
             <div class="alert-banner" data-action="go-discrepancies">
                 ⚠️ ${discCount} bill${discCount > 1 ? 's' : ''} with mismatch — tap to review
+            </div>
+        ` : ''}
+
+        <!-- Supplier Balances -->
+        ${appData.suppliers.length > 0 ? `
+            <div class="section-title">Supplier Balances</div>
+            <div class="card balance-card">
+                ${[...appData.suppliers].sort((a, b) => getBalance(b.id) - getBalance(a.id)).map(sup => {
+                    const bal = getBalance(sup.id);
+                    return `<div class="bal-row" data-action="view-supplier" data-id="${sup.id}">
+                        <span class="bal-name">${sup.name}</span>
+                        <span class="bal-amt ${bal > 0 ? 'due' : bal < 0 ? 'overpaid' : 'clear'}">${bal === 0 ? 'Clear' : fmtShort(bal)}</span>
+                    </div>`;
+                }).join('')}
+                <div class="bal-row bal-total">
+                    <span class="bal-name">TOTAL</span>
+                    <span class="bal-amt due">${fmtShort(totalDue)}</span>
+                </div>
             </div>
         ` : ''}
 
@@ -523,8 +572,14 @@ function renderSupplierDetail() {
 
         <div class="btn-row">
             <button class="btn btn-primary btn-sm" data-action="add-bill-for" data-id="${sup.id}">➕ Bill</button>
-            <button class="btn btn-success btn-sm" data-action="add-payment" data-id="${sup.id}">💰 Pay</button>
-            <button class="btn btn-ghost btn-sm" data-action="view-statement" data-id="${sup.id}">📤 Statement</button>
+            <button class="btn btn-ghost btn-sm" data-action="view-statement" data-id="${sup.id}">� Statement</button>
+        </div>
+
+        <!-- Quick Payment -->
+        <div class="quick-pay-strip">
+            <input class="quick-pay-input" type="number" inputmode="decimal" placeholder="₹ Amount" id="quick-pay-amt" />
+            <select class="quick-pay-mode" id="quick-pay-mode"><option>Cash</option><option>UPI</option><option>NEFT</option><option>Cheque</option></select>
+            <button class="btn btn-success btn-sm quick-pay-btn" data-action="quick-pay" data-id="${sup.id}">Pay</button>
         </div>
 
         <div class="section-title">Ledger (Running Balance)</div>
@@ -579,6 +634,18 @@ function renderAddBill() {
     if (!billState.supplierId && screenParams.supplierId) {
         billState.supplierId = screenParams.supplierId;
     }
+    // Check for saved draft
+    if (!billState.supplierId && !billState.editingBillId) {
+        var draft = loadDraft();
+        if (draft && draft.supplierId && !screenParams.draftChecked) {
+            screenParams.draftChecked = true;
+            if (confirm('Continue with saved draft?')) {
+                billState = draft;
+            } else {
+                clearDraft();
+            }
+        }
+    }
 
     const calcTotal = billState.items.reduce((s, i) => s + calcItemTotal(i), 0);
     const adj = parseFloat(billState.adjustment) || 0;
@@ -617,6 +684,7 @@ function renderAddBill() {
                 <option value="">-- Select --</option>
                 ${appData.suppliers.map(s => `<option value="${s.id}" ${billState.supplierId === s.id ? 'selected' : ''}>${s.name}</option>`).join('')}
             </select>
+            ${billState.supplierId ? `<div class="supplier-bal-hint">Balance: <strong>${fmtShort(getBalance(billState.supplierId))}</strong></div>` : ''}
         </div>
 
         <div class="form-group" style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
@@ -676,7 +744,6 @@ function renderAddBill() {
             <div class="fast-items-footer">
                 <button class="fi-add-btn" data-action="add-item">+</button>
                 <button class="fi-add-btn" data-action="add-5-items">+5</button>
-                <button class="fi-add-btn fi-next-btn" data-action="next-field">Next</button>
                 <span class="fi-total-label">TOTAL</span>
                 <span class="fi-total-val" id="calc-total-display">${finalTotal > 0 ? finalTotal.toLocaleString('en-IN') : '0'}</span>
             </div>
@@ -1247,6 +1314,7 @@ function attachEventListeners() {
             if (totalEl) totalEl.textContent = '₹' + (calcTotal > 0 ? calcTotal.toLocaleString('en-IN') : '0');
 
             updateLiveTracker();
+            saveDraft();
         });
 
         // Enter key: fast navigation
@@ -1494,6 +1562,26 @@ function handleAction(action, dataset) {
         case 'clear-photo': billState.photo = null; navigate('add-bill'); break;
         case 'add-payment': showPaymentModal(dataset.id); break;
 
+        case 'quick-pay': {
+            var qAmt = parseFloat(document.getElementById('quick-pay-amt')?.value);
+            if (!qAmt || qAmt <= 0) { toast('Enter amount'); break; }
+            var qMode = document.getElementById('quick-pay-mode')?.value || 'Cash';
+            appData.payments.push({
+                id: uid(),
+                supplierId: dataset.id,
+                amount: qAmt,
+                date: new Date().toISOString().split('T')[0],
+                note: qMode,
+                createdAt: new Date().toISOString()
+            });
+            saveData();
+            var supN = appData.suppliers.find(function(s) { return s.id === dataset.id; })?.name || '';
+            syncToSheet('addPayment', { supplier: supN, date: new Date().toISOString().split('T')[0], amount: qAmt, note: qMode });
+            toast('Payment recorded!');
+            navigate('supplier-detail', { id: dataset.id });
+            break;
+        }
+
         case 'share-bill-text': shareBillAsText(dataset.id); break;
         case 'share-bill-whatsapp': shareBillWhatsApp(dataset.id); break;
         case 'share-card-image': shareCardAsImage(dataset.id); break;
@@ -1628,6 +1716,16 @@ function saveBill() {
     const writtenTotal = parseFloat(billState.writtenTotal) || 0;
     const hasMismatch = validItems.length > 0 && writtenTotal > 0 && Math.abs(calculatedTotal - writtenTotal) > 0.5;
 
+    // Duplicate detection
+    if (!billState.editingBillId) {
+        var duplicate = appData.bills.find(function(b) {
+            return b.supplierId === billState.supplierId && b.date === billState.date && Math.abs(b.calculatedTotal - calculatedTotal) < 1;
+        });
+        if (duplicate) {
+            if (!confirm('Same supplier, date, and amount already exists. Save anyway?')) return;
+        }
+    }
+
     if (billState.editingBillId) {
         // Update existing bill
         const idx = appData.bills.findIndex(b => b.id === billState.editingBillId);
@@ -1683,6 +1781,7 @@ function saveBill() {
 
         saveData();
         resetBillState();
+        clearDraft();
         toast('Bill saved!');
 
         // Sync to Google Sheets
