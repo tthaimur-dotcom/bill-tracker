@@ -488,7 +488,7 @@ body {
 
 .fast-items-footer {
     display: grid;
-    grid-template-columns: auto auto 1fr auto;
+    grid-template-columns: 36px 36px 60px 1fr auto;
     align-items: center;
     padding: 8px 10px;
     background: var(--bg-input);
@@ -515,9 +515,10 @@ body {
 }
 
 .fi-next-btn {
-    width: auto;
-    padding: 0 12px;
-    font-size: 0.8rem;
+    width: 60px;
+    padding: 0 8px;
+    font-size: 0.75rem;
+    font-weight: 600;
     color: var(--success);
     border-color: var(--success);
 }

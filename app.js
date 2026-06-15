@@ -716,10 +716,10 @@ function renderAddBill() {
         <div class="form-group">
             <label>Adjustment (prev bill correction)</label>
             <div style="display:flex;gap:8px;align-items:center;">
-                <button class="adj-sign-btn" data-action="toggle-adj-sign" id="adj-sign-btn">${(parseFloat(billState.adjustment) || 0) < 0 ? '−' : '+'}</button>
+                <button class="adj-sign-btn" data-action="toggle-adj-sign" id="adj-sign-btn" data-sign="${(parseFloat(billState.adjustment) || 0) < 0 ? 'neg' : 'pos'}" style="color:${(parseFloat(billState.adjustment) || 0) < 0 ? 'var(--danger)' : 'var(--success)'}">${(parseFloat(billState.adjustment) || 0) < 0 ? '-' : '+'}</button>
                 <input class="form-input" type="number" inputmode="decimal" id="bill-adjustment" value="${Math.abs(parseFloat(billState.adjustment) || 0) || ''}" placeholder="0" step="1" style="flex:1" />
             </div>
-            <p class="fs-sm" style="color:var(--text-secondary);margin-top:4px;">Tap +/− to switch. Negative = dealer reduced this bill</p>
+            <p class="fs-sm" style="color:var(--text-secondary);margin-top:4px;">Enter total adjustment amount. Tap +/- to switch.</p>
         </div>
 
         <div class="btn-row mt-16" style="margin-bottom:20px;">
@@ -1199,12 +1199,8 @@ function moveToNextFieldGlobal() {
         var r = row.querySelector('.fi-rate');
         if (r) r.focus();
     } else if (focused.classList.contains('fi-rate')) {
-        var amtField = row.querySelector('.fi-amt');
-        if (amtField && !amtField.disabled) {
-            amtField.focus();
-        } else {
-            goNextRowGlobal(idx);
-        }
+        // After rate → go to NEXT row qty (not amt in same row)
+        goNextRowGlobal(idx);
     } else if (focused.classList.contains('fi-amt')) {
         goNextRowGlobal(idx);
     }
@@ -1311,14 +1307,24 @@ function attachEventListeners() {
     const adjSignBtn = document.getElementById('adj-sign-btn');
     if (adjInp) adjInp.addEventListener('input', e => {
         var val = parseFloat(e.target.value) || 0;
-        var sign = (adjSignBtn && adjSignBtn.textContent.trim() === '−') ? -1 : 1;
-        billState.adjustment = String(val * sign);
+        var isNeg = adjSignBtn && adjSignBtn.dataset.sign === 'neg';
+        billState.adjustment = String(isNeg ? -val : val);
         updateLiveTracker();
     });
     if (adjSignBtn) adjSignBtn.addEventListener('click', function() {
-        var current = parseFloat(billState.adjustment) || 0;
-        billState.adjustment = String(-current);
-        adjSignBtn.textContent = current >= 0 ? '−' : '+';
+        var isNeg = this.dataset.sign === 'neg';
+        if (isNeg) {
+            this.dataset.sign = 'pos';
+            this.textContent = '+';
+            this.style.color = 'var(--success)';
+        } else {
+            this.dataset.sign = 'neg';
+            this.textContent = '-';
+            this.style.color = 'var(--danger)';
+        }
+        // Recalculate adjustment with new sign
+        var val = parseFloat(adjInp.value) || 0;
+        billState.adjustment = String(this.dataset.sign === 'neg' ? -val : val);
         updateLiveTracker();
     });
 
