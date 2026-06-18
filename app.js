@@ -757,13 +757,15 @@ function renderAddBill() {
             ${billState.items.map((item, idx) => {
                 const itemTotal = calcItemTotal(item);
                 const hasQtyRate = parseFloat(item.qty) && parseFloat(item.rate);
+                const hasQtyTotal = parseFloat(item.qty) && parseFloat(item.total) && !parseFloat(item.rate);
+                const autoRate = hasQtyTotal ? calcItemRate(item) : 0;
                 return `
                 <div class="fast-items-row" data-idx="${idx}">
                     <span class="fi-sl">${idx + 1}</span>
                     <input class="fi-input fi-item item-input" placeholder="Item ${idx + 1}" value="${item.name}" data-field="name" data-idx="${idx}" />
                     <input class="fi-input fi-qty item-input" placeholder="—" type="number" inputmode="decimal" value="${item.qty}" data-field="qty" data-idx="${idx}" />
-                    <input class="fi-input fi-rate item-input" placeholder="—" type="number" inputmode="decimal" value="${item.rate}" data-field="rate" data-idx="${idx}" />
-                    <input class="fi-input fi-amt item-input" placeholder="${hasQtyRate ? itemTotal.toFixed(0) : '—'}" type="number" inputmode="decimal" value="${item.total || (hasQtyRate ? '' : '')}" data-field="total" data-idx="${idx}" ${hasQtyRate ? 'disabled' : ''} />
+                    <input class="fi-input fi-rate item-input" placeholder="${autoRate ? '@' + autoRate : '—'}" type="number" inputmode="decimal" value="${item.rate}" data-field="rate" data-idx="${idx}" ${hasQtyTotal ? 'disabled' : ''} />
+                    <input class="fi-input fi-amt item-input" placeholder="${hasQtyRate ? itemTotal.toFixed(0) : '—'}" type="number" inputmode="decimal" value="${item.total || ''}" data-field="total" data-idx="${idx}" ${hasQtyRate ? 'disabled' : ''} />
                 </div>`;
             }).join('')}
             <div class="fast-items-footer">
@@ -826,6 +828,14 @@ function calcItemTotal(item) {
     const manualTotal = parseFloat(item.total) || 0;
     if (qty && rate) return Math.round(qty * rate * 100) / 100;
     if (manualTotal) return manualTotal;
+    return 0;
+}
+
+// Calculate unit rate from qty and total
+function calcItemRate(item) {
+    const qty = parseFloat(item.qty) || 0;
+    const total = parseFloat(item.total) || 0;
+    if (qty && total && !parseFloat(item.rate)) return Math.round(total / qty * 100) / 100;
     return 0;
 }
 
@@ -1318,18 +1328,28 @@ function attachEventListeners() {
             billState.items[idx][field] = e.target.value;
 
             // If qty+rate entered, auto-calculate and disable amt field
+            // If qty+total entered, auto-calculate rate and disable rate field
             const row = e.target.closest('.fast-items-row');
             if (row) {
                 const qty = parseFloat(billState.items[idx].qty) || 0;
                 const rate = parseFloat(billState.items[idx].rate) || 0;
+                const total = parseFloat(billState.items[idx].total) || 0;
                 const amtInput = row.querySelector('.fi-amt');
-                if (qty && rate && amtInput) {
-                    amtInput.placeholder = (qty * rate).toFixed(0);
-                    amtInput.disabled = true;
+                const rateInput = row.querySelector('.fi-rate');
+
+                if (qty && rate) {
+                    // Qty + Rate → auto-calc total, disable total
+                    if (amtInput) { amtInput.placeholder = Math.round(qty * rate).toString(); amtInput.disabled = true; }
+                    if (rateInput) { rateInput.disabled = false; }
                     billState.items[idx].total = '';
-                } else if (amtInput) {
-                    amtInput.disabled = false;
-                    amtInput.placeholder = '—';
+                } else if (qty && total && !rate) {
+                    // Qty + Total → auto-calc rate, disable rate
+                    if (rateInput) { rateInput.placeholder = '@' + Math.round((total / qty) * 100) / 100; rateInput.disabled = true; }
+                    if (amtInput) { amtInput.disabled = false; }
+                } else {
+                    // Reset both to editable
+                    if (amtInput) { amtInput.disabled = false; amtInput.placeholder = '—'; }
+                    if (rateInput) { rateInput.disabled = false; rateInput.placeholder = '—'; }
                 }
             }
 
