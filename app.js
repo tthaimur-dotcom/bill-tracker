@@ -582,8 +582,9 @@ function renderSupplierDetail() {
 
         <!-- Quick Payment -->
         <div class="quick-pay-strip">
-            <input class="quick-pay-input" type="number" inputmode="decimal" placeholder="₹ Amount" id="quick-pay-amt" />
-            <select class="quick-pay-mode" id="quick-pay-mode"><option>Cash</option><option>UPI</option><option>NEFT</option><option>Cheque</option></select>
+            <input class="quick-pay-input" type="number" inputmode="decimal" placeholder="Amount" id="quick-pay-amt" />
+            <input class="quick-pay-date" type="date" id="quick-pay-date" value="${new Date().toISOString().split('T')[0]}" />
+            <select class="quick-pay-mode" id="quick-pay-mode"><option>UPI</option><option>Cash</option><option>NEFT</option><option>Cheque</option></select>
             <button class="btn btn-success btn-sm quick-pay-btn" data-action="quick-pay" data-id="${sup.id}">Pay</button>
         </div>
 
@@ -625,6 +626,15 @@ function renderSupplierDetail() {
                 <span>Total Paid</span>
                 <span class="pay-hist-amt">${fmtShort(appData.payments.filter(p => p.supplierId === sup.id).reduce((s, p) => s + p.amount, 0))}</span>
             </div>
+            <div class="pay-hist-row pay-hist-total">
+                <span>Remaining Balance</span>
+                <span class="pay-hist-amt" style="color:var(--danger)">${fmtShort(balance)}</span>
+            </div>
+        </div>
+        <div class="btn-row">
+            <button class="btn btn-outline btn-sm" data-action="share-payments" data-id="${sup.id}">📋 Copy List</button>
+            <button class="btn btn-outline btn-sm" data-action="whatsapp-payments" data-id="${sup.id}">💬 WhatsApp</button>
+            <button class="btn btn-primary btn-sm" data-action="share-payments-image" data-id="${sup.id}">📸 Image</button>
         </div>
         ` : ''}
     `;
@@ -1659,18 +1669,19 @@ function handleAction(action, dataset) {
         case 'quick-pay': {
             var qAmt = parseFloat(document.getElementById('quick-pay-amt')?.value);
             if (!qAmt || qAmt <= 0) { toast('Enter amount'); break; }
-            var qMode = document.getElementById('quick-pay-mode')?.value || 'Cash';
+            var qMode = document.getElementById('quick-pay-mode')?.value || 'UPI';
+            var qDate = document.getElementById('quick-pay-date')?.value || new Date().toISOString().split('T')[0];
             appData.payments.push({
                 id: uid(),
                 supplierId: dataset.id,
                 amount: qAmt,
-                date: new Date().toISOString().split('T')[0],
+                date: qDate,
                 note: qMode,
                 createdAt: new Date().toISOString()
             });
             saveData();
             var supN = appData.suppliers.find(function(s) { return s.id === dataset.id; })?.name || '';
-            syncToSheet('addPayment', { supplier: supN, date: new Date().toISOString().split('T')[0], amount: qAmt, note: qMode });
+            syncToSheet('addPayment', { supplier: supN, date: qDate, amount: qAmt, note: qMode });
             toast('Payment recorded!');
             navigate('supplier-detail', { id: dataset.id });
             break;
@@ -1683,6 +1694,10 @@ function handleAction(action, dataset) {
         case 'view-statement': navigate('supplier-statement', { id: dataset.id }); break;
         case 'copy-statement': copyStatement(dataset.id); break;
         case 'whatsapp-statement': whatsappStatement(dataset.id); break;
+
+        case 'share-payments': copyPaymentSummary(dataset.id); break;
+        case 'whatsapp-payments': whatsappPaymentSummary(dataset.id); break;
+        case 'share-payments-image': sharePaymentsImage(dataset.id); break;
         case 'pdf-statement': generateStatementPDF(dataset.id); break;
 
         case 'go-discrepancies': navigate('discrepancies'); break;
@@ -2055,6 +2070,166 @@ function copyStatement(supplierId) {
     copyText(text);
 }
 
+// ===== PAYMENT SUMMARY (share to supplier) =====
+function buildPaymentSummary(supplierId) {
+    var sup = appData.suppliers.find(function(s) { return s.id === supplierId; });
+    if (!sup) return '';
+    var payments = appData.payments.filter(function(p) { return p.supplierId === supplierId; }).sort(function(a, b) { return new Date(a.date) - new Date(b.date); });
+    var totalPaid = payments.reduce(function(s, p) { return s + p.amount; }, 0);
+    var balance = getBalance(supplierId);
+    var NL = '\n';
+    var line = '------------------------------';
+
+    var t = 'PAYMENT SUMMARY' + NL;
+    t += line + NL;
+    t += 'To: ' + sup.name.toUpperCase() + NL;
+    t += 'Date: ' + fmtDate(new Date().toISOString()) + NL;
+    t += line + NL + NL;
+
+    var sl = 1;
+    payments.forEach(function(p) {
+        t += sl + '. ' + fmtDateShort(p.date) + '  ' + (p.note || 'Payment').padEnd(10) + '  Rs.' + p.amount.toLocaleString('en-IN') + NL;
+        sl++;
+    });
+
+    t += NL + line + NL;
+    t += 'Total Paid   : Rs.' + totalPaid.toLocaleString('en-IN') + NL;
+    t += 'Balance Due  : Rs.' + Math.max(0, balance).toLocaleString('en-IN') + NL;
+    t += line + NL;
+    t += NL + 'Please verify and confirm.' + NL + 'Thank you.' + NL;
+
+    return t;
+}
+
+function copyPaymentSummary(supplierId) {
+    copyText(buildPaymentSummary(supplierId));
+}
+
+function whatsappPaymentSummary(supplierId) {
+    var text = buildPaymentSummary(supplierId);
+    window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
+}
+
+// Payment Image Preview
+function sharePaymentsImage(supplierId) {
+    var sup = appData.suppliers.find(function(s) { return s.id === supplierId; });
+    if (!sup) return;
+    var payments = appData.payments.filter(function(p) { return p.supplierId === supplierId; }).sort(function(a, b) { return new Date(a.date) - new Date(b.date); });
+    if (payments.length === 0) { toast('No payments to share'); return; }
+
+    var totalPaid = payments.reduce(function(s, p) { return s + p.amount; }, 0);
+    var balance = getBalance(supplierId);
+
+    var S = 2;
+    var W = 750 * S;
+    var pad = 40 * S;
+    var LH = 24 * S;
+    var lines = 8 + payments.length;
+    var H = lines * LH + pad * 3;
+
+    var canvas = document.createElement('canvas');
+    canvas.width = W; canvas.height = H;
+    var ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H);
+    var y = pad;
+
+    var FL = 'bold ' + (22*S) + 'px "Courier New", monospace';
+    var F = 'bold ' + (15*S) + 'px "Courier New", monospace';
+    var FS = 'bold ' + (12*S) + 'px "Courier New", monospace';
+    var amtX = W - pad;
+
+    // Title
+    ctx.font = FL; ctx.fillStyle = '#000';
+    ctx.fillText('PAYMENT RECORD', pad, y);
+    y += LH;
+
+    // Supplier name
+    ctx.font = F; ctx.fillStyle = '#333';
+    ctx.fillText('To: ' + sup.name.toUpperCase(), pad, y);
+    y += LH * 0.5;
+
+    // Date
+    ctx.font = FS; ctx.fillStyle = '#555';
+    ctx.fillText('Generated: ' + fmtDate(new Date().toISOString()), pad, y);
+    y += LH;
+
+    // Bold line
+    ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(W - pad, y);
+    ctx.strokeStyle = '#000'; ctx.lineWidth = 2 * S; ctx.stroke();
+    y += LH * 0.5;
+
+    // Payment rows
+    payments.forEach(function(p, i) {
+        ctx.font = F; ctx.fillStyle = '#000';
+        var sl = String(i + 1) + '.';
+        ctx.fillText(sl, pad, y);
+        ctx.fillText(fmtDateShort(p.date), pad + 30*S, y);
+
+        // Mode
+        ctx.font = FS; ctx.fillStyle = '#555';
+        ctx.fillText(p.note || 'Payment', pad + (W - pad*2) * 0.4, y);
+
+        // Amount (right, bold green)
+        ctx.font = F; ctx.fillStyle = '#1a8c3a';
+        var amt = '\u20B9' + p.amount.toLocaleString('en-IN');
+        var aw = ctx.measureText(amt).width;
+        ctx.fillText(amt, amtX - aw, y);
+
+        y += LH;
+    });
+
+    // Bold line
+    y += LH * 0.2;
+    ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(W - pad, y);
+    ctx.strokeStyle = '#000'; ctx.lineWidth = 2 * S; ctx.stroke();
+    y += LH * 0.6;
+
+    // Total paid
+    ctx.font = 'bold ' + (18*S) + 'px "Courier New", monospace';
+    ctx.fillStyle = '#1a8c3a';
+    ctx.fillText('TOTAL PAID', pad, y);
+    var tp = '\u20B9' + totalPaid.toLocaleString('en-IN');
+    var tpw = ctx.measureText(tp).width;
+    ctx.fillText(tp, amtX - tpw, y);
+    y += LH;
+
+    // Balance remaining
+    if (balance > 0) {
+        ctx.font = F; ctx.fillStyle = '#cc0000';
+        ctx.fillText('BALANCE DUE', pad, y);
+        var bd = '\u20B9' + Math.round(balance).toLocaleString('en-IN');
+        var bdw = ctx.measureText(bd).width;
+        ctx.fillText(bd, amtX - bdw, y);
+        y += LH;
+    }
+
+    // Footer
+    ctx.font = FS; ctx.fillStyle = '#666';
+    ctx.fillText('Please verify. Thank you.', pad, y);
+    y += LH;
+
+    // Export
+    var fH = y + pad / 2;
+    var fc = document.createElement('canvas');
+    fc.width = W; fc.height = fH;
+    var fctx = fc.getContext('2d');
+    fctx.fillStyle = '#fff'; fctx.fillRect(0, 0, fc.width, fH);
+    fctx.drawImage(canvas, 0, 0);
+    fc.toBlob(function(blob) {
+        if (navigator.share && navigator.canShare) {
+            try {
+                var file = new File([blob], 'payments-' + sup.name + '.png', {type:'image/png'});
+                if (navigator.canShare({files:[file]})) { navigator.share({files:[file], title:'Payments'}).catch(function(){}); return; }
+            } catch(e) {}
+        }
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url; a.download = 'payments-' + sup.name + '.png';
+        a.click(); URL.revokeObjectURL(url);
+        toast('Payment image saved!');
+    }, 'image/png', 1.0);
+}
+
 function whatsappStatement(supplierId) {
     const text = buildStatementText(supplierId);
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
@@ -2244,98 +2419,106 @@ function shareCardAsImage(billId) {
 function drawCleanBill(ctx, W, pad, LH, y, bill, sup, S, canvas) {
     var supName = sup ? sup.name.toUpperCase() : 'UNKNOWN';
     var amtX = W - pad;
+    var F = 'bold ' + (16*S) + 'px "Courier New", monospace';
+    var FS = 'bold ' + (13*S) + 'px "Courier New", monospace';
+    var FL = 'bold ' + (24*S) + 'px "Courier New", monospace';
 
-    // === HEADER ===
-    ctx.font = 'bold ' + (22*S) + 'px "Courier New", monospace';
-    ctx.fillStyle = '#1c1c1e';
+    // === SUPPLIER NAME (large, bold, black) ===
+    ctx.font = FL;
+    ctx.fillStyle = '#000000';
     ctx.fillText(supName, pad, y);
-    y += LH * 0.9;
-
-    ctx.font = (13*S) + 'px "Courier New", monospace';
-    ctx.fillStyle = '#8e8e93';
-    ctx.fillText(fmtDate(bill.date) + (bill.billNumber ? '  |  #' + bill.billNumber : ''), pad, y);
     y += LH * 1.2;
 
-    // === THIN LINE after header ===
-    ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(W - pad, y);
-    ctx.strokeStyle = '#e5e5ea'; ctx.lineWidth = 1 * S; ctx.stroke();
-    y += LH * 0.7;
+    // Date
+    ctx.font = FS;
+    ctx.fillStyle = '#444444';
+    ctx.fillText(fmtDate(bill.date) + (bill.billNumber ? '   #' + bill.billNumber : ''), pad, y);
+    y += LH * 1.4;
 
-    // === ITEMS (clean: name left, qty x rate middle, amount right) ===
+    // === SINGLE BOLD LINE after header ===
+    ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(W - pad, y);
+    ctx.strokeStyle = '#000000'; ctx.lineWidth = 2 * S; ctx.stroke();
+    y += LH * 1.0;
+
+    // === ITEMS ===
     bill.items.forEach(function(item, i) {
         var name = item.name || 'Item ' + (i + 1);
 
-        // Item name
-        ctx.font = (15*S) + 'px "Courier New", monospace';
-        ctx.fillStyle = '#1c1c1e';
+        // Item name (bold, black)
+        ctx.font = F;
+        ctx.fillStyle = '#000000';
         ctx.fillText(name, pad, y);
 
-        // Qty x Rate (middle, grey)
+        // Qty x Rate (right-center area, dark grey)
         var detail = '';
-        if (item.qty && item.rate) detail = item.qty + ' x \u20B9' + item.rate;
-        else if (item.qty) detail = 'Qty: ' + item.qty;
-        ctx.font = (13*S) + 'px "Courier New", monospace';
-        ctx.fillStyle = '#8e8e93';
-        var detailX = pad + (W - pad*2) * 0.42;
-        ctx.fillText(detail, detailX, y);
+        if (item.qty && item.rate) detail = item.qty + ' x ' + item.rate;
+        else if (item.qty) detail = 'x' + item.qty;
+        if (detail) {
+            ctx.font = FS;
+            ctx.fillStyle = '#555555';
+            var detailX = pad + (W - pad * 2) * 0.45;
+            ctx.fillText(detail, detailX, y);
+        }
 
-        // Amount (right, bold)
-        ctx.font = 'bold ' + (15*S) + 'px "Courier New", monospace';
-        ctx.fillStyle = '#1c1c1e';
+        // Amount (right-aligned, bold black)
+        ctx.font = F;
+        ctx.fillStyle = '#000000';
         var amt = '\u20B9' + Math.round(item.calculatedTotal).toLocaleString('en-IN');
         var aw = ctx.measureText(amt).width;
         ctx.fillText(amt, amtX - aw, y);
 
-        y += LH;
+        y += LH * 1.3;
     });
 
-    // === LINE before total ===
-    y += LH * 0.3;
+    // === SINGLE BOLD LINE before total ===
+    y += LH * 0.2;
     ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(W - pad, y);
-    ctx.strokeStyle = '#e5e5ea'; ctx.lineWidth = 1 * S; ctx.stroke();
-    y += LH * 0.9;
+    ctx.strokeStyle = '#000000'; ctx.lineWidth = 2 * S; ctx.stroke();
+    y += LH * 1.0;
 
-    // === TOTAL ===
-    ctx.font = 'bold ' + (17*S) + 'px "Courier New", monospace';
-    ctx.fillStyle = '#34c759';
+    // === TOTAL (large, bold, green) ===
+    ctx.font = 'bold ' + (20*S) + 'px "Courier New", monospace';
+    ctx.fillStyle = '#1a8c3a';
     ctx.fillText('TOTAL', pad, y);
     var totalAmt = '\u20B9' + bill.calculatedTotal.toFixed(2);
-    var tw = ctx.measureText(totalAmt).width;
-    ctx.fillText(totalAmt, amtX - tw, y);
-    y += LH * 1.3;
+    var tw2 = ctx.measureText(totalAmt).width;
+    ctx.fillText(totalAmt, amtX - tw2, y);
+    y += LH * 1.5;
 
     // === MISMATCH BOX ===
     if (bill.hasMismatch) {
         var diff = bill.calculatedTotal - bill.writtenTotal;
-        var boxH = 4.2 * LH;
+        var boxH = 4.5 * LH;
 
-        // Pink background box
-        ctx.fillStyle = '#fff5f5';
-        ctx.fillRect(pad - 8*S, y - 8*S, W - pad*2 + 16*S, boxH);
-        // Left red bar
-        ctx.fillStyle = '#ff3b30';
-        ctx.fillRect(pad - 8*S, y - 8*S, 4*S, boxH);
+        // Light red background
+        ctx.fillStyle = '#fff0f0';
+        ctx.fillRect(pad - 10*S, y - 12*S, W - pad*2 + 20*S, boxH);
+        // Bold left red bar
+        ctx.fillStyle = '#cc0000';
+        ctx.fillRect(pad - 10*S, y - 12*S, 5*S, boxH);
 
-        y += LH * 0.5;
+        y += LH * 0.6;
 
-        // SHORT BY / EXCESS BY
-        ctx.font = 'bold ' + (16*S) + 'px "Courier New", monospace';
-        ctx.fillStyle = '#ff3b30';
-        ctx.fillText((diff > 0 ? '\u26A0 EXCESS BY \u20B9' : '\u26A0 SHORT BY \u20B9') + Math.abs(Math.round(diff)).toLocaleString('en-IN'), pad + 10*S, y);
-        y += LH;
+        // EXCESS / SHORT
+        ctx.font = 'bold ' + (18*S) + 'px "Courier New", monospace';
+        ctx.fillStyle = '#cc0000';
+        ctx.fillText((diff > 0 ? 'EXCESS' : 'SHORT') + '  \u20B9' + Math.abs(Math.round(diff)).toLocaleString('en-IN'), pad + 12*S, y);
+        y += LH * 1.2;
 
-        // Dealer vs calc
-        ctx.font = (12*S) + 'px "Courier New", monospace';
-        ctx.fillStyle = '#666';
-        ctx.fillText("Dealer's total: \u20B9" + Math.round(bill.writtenTotal).toLocaleString('en-IN') + '  |  Calculated: \u20B9' + Math.round(bill.calculatedTotal).toLocaleString('en-IN'), pad + 10*S, y);
-        y += LH;
+        // Comparison
+        ctx.font = 'bold ' + (12*S) + 'px "Courier New", monospace';
+        ctx.fillStyle = '#333333';
+        ctx.fillText('Dealer: \u20B9' + Math.round(bill.writtenTotal).toLocaleString('en-IN') + '   Calc: \u20B9' + Math.round(bill.calculatedTotal).toLocaleString('en-IN'), pad + 12*S, y);
+        y += LH * 1.2;
 
         // Polite note
-        ctx.font = 'italic ' + (12*S) + 'px "Courier New", monospace';
-        ctx.fillStyle = '#888';
-        ctx.fillText('Sir, please check once. Small difference in total.', pad + 10*S, y);
-        y += LH * 0.7;
-        ctx.fillText('Kindly verify. Thank you.', pad + 10*S, y);
+        ctx.font = 'bold ' + (11*S) + 'px "Courier New", monospace';
+        ctx.fillStyle = '#555555';
+        ctx.fillText('Sir, please check once.', pad + 12*S, y);
+        y += LH * 0.9;
+        ctx.fillText('Small difference. Kindly verify.', pad + 12*S, y);
+        y += LH * 0.9;
+        ctx.fillText('Thank you.', pad + 12*S, y);
         y += LH;
     }
 
@@ -2344,7 +2527,7 @@ function drawCleanBill(ctx, W, pad, LH, y, bill, sup, S, canvas) {
     var fc = document.createElement('canvas');
     fc.width = W; fc.height = fH;
     var fctx = fc.getContext('2d');
-    fctx.fillStyle = '#fff'; fctx.fillRect(0, 0, fc.width, fH);
+    fctx.fillStyle = '#ffffff'; fctx.fillRect(0, 0, fc.width, fH);
     fctx.drawImage(canvas, 0, 0);
     fc.toBlob(function(blob) {
         if (navigator.share && navigator.canShare) {
