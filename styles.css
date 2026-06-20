@@ -1239,6 +1239,17 @@ body {
     color: var(--success);
 }
 
+.pay-edit-btn, .pay-del-btn {
+    background: none;
+    border: none;
+    font-size: 0.85rem;
+    cursor: pointer;
+    padding: 4px;
+    opacity: 0.6;
+}
+
+.pay-edit-btn:active, .pay-del-btn:active { opacity: 1; }
+
 .pay-hist-total {
     border-top: 2px solid var(--border);
     margin-top: 4px;

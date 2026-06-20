@@ -620,6 +620,8 @@ function renderSupplierDetail() {
                         <span class="pay-hist-mode">${p.note || 'Payment'}</span>
                     </div>
                     <span class="pay-hist-amt">${fmtShort(p.amount)}</span>
+                    <button class="pay-edit-btn" data-action="edit-payment" data-id="${p.id}">✏️</button>
+                    <button class="pay-del-btn" data-action="delete-payment" data-id="${p.id}" data-supid="${sup.id}">🗑</button>
                 </div>
             `).join('')}
             <div class="pay-hist-row pay-hist-total">
@@ -1665,6 +1667,34 @@ function handleAction(action, dataset) {
         case 'upload-photo': document.getElementById('file-upload').click(); break;
         case 'clear-photo': billState.photo = null; navigate('add-bill'); break;
         case 'add-payment': showPaymentModal(dataset.id); break;
+
+        case 'edit-payment': {
+            var pay = appData.payments.find(function(p) { return p.id === dataset.id; });
+            if (!pay) break;
+            var newAmt = prompt('Amount:', pay.amount);
+            if (newAmt === null) break;
+            var newDate = prompt('Date (YYYY-MM-DD):', pay.date);
+            if (newDate === null) newDate = pay.date;
+            var newMode = prompt('Mode (UPI/Cash/NEFT/Cheque):', pay.note || 'UPI');
+            if (newMode === null) newMode = pay.note;
+            pay.amount = parseFloat(newAmt) || pay.amount;
+            pay.date = newDate || pay.date;
+            pay.note = newMode || pay.note;
+            saveData();
+            toast('Payment updated!');
+            navigate('supplier-detail', { id: pay.supplierId });
+            break;
+        }
+
+        case 'delete-payment': {
+            if (confirm('Delete this payment?')) {
+                appData.payments = appData.payments.filter(function(p) { return p.id !== dataset.id; });
+                saveData();
+                toast('Payment deleted');
+                navigate('supplier-detail', { id: dataset.supid });
+            }
+            break;
+        }
 
         case 'quick-pay': {
             var qAmt = parseFloat(document.getElementById('quick-pay-amt')?.value);
